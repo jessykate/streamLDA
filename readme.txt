@@ -1,9 +1,19 @@
 ONLINE VARIATIONAL BAYES FOR LATENT DIRICHLET ALLOCATION
 
+This is an implementation of online variational bayes for LDA. The code written
+by Matt Hoffman is being modified to support arbitrary vocabulary and
+stream-like sources of arbitrary number. 
+
+
 Matthew D. Hoffman
 mdhoffma@cs.princeton.edu
-
 (C) Copyright 2010, Matthew D. Hoffman
+
+Modifications made by Jessy Cowan-Sharp and Jordan Boyd-Grader
+jessy.cowansharp@gmail.com
+jbg@umiacs.umd.edu
+
+------------------------------------------------------------------------
 
 This is free software, you can redistribute it and/or modify it under
 the terms of the GNU General Public License.
