@@ -19,6 +19,7 @@
 import sys, re, time, string
 import numpy as n
 from scipy.special import gammaln, psi
+from dirichlet_words import DirichletWords
 
 n.random.seed(100000001)
 meanchangethresh = 0.001
@@ -31,71 +32,15 @@ def dirichlet_expectation(alpha):
         return(psi(alpha) - psi(n.sum(alpha)))
     return(psi(alpha) - psi(n.sum(alpha, 1))[:, n.newaxis])
 
-def parse_doc_list(docs, vocab):
-    """
-    Parse a document into a list of word ids and a list of counts,
-    or parse a set of documents into two lists of lists of word ids
-    and counts.
-
-    Arguments: 
-    docs:  List of D documents. Each document must be represented as
-           a single string. (Word order is unimportant.) Any
-           words not in the vocabulary will be ignored.
-    vocab: Dictionary mapping from words to integer ids.
-
-    Returns a pair of lists of lists. 
-
-    The first, wordids, says what vocabulary tokens are present in
-    each document. wordids[i][j] gives the jth unique token present in
-    document i. (Don't count on these tokens being in any particular
-    order.)
-
-    The second, wordcts, says how many times each vocabulary token is
-    present. wordcts[i][j] is the number of times that the token given
-    by wordids[i][j] appears in document i.
-    """
-    if (type(docs).__name__ == 'str'):
-        temp = list()
-        temp.append(docs)
-        docs = temp
-
-    D = len(docs)
-    
-    wordids = list()
-    wordcts = list()
-    for d in range(0, D):
-        docs[d] = docs[d].lower()
-        docs[d] = re.sub(r'-', ' ', docs[d])
-        docs[d] = re.sub(r'[^a-z ]', '', docs[d])
-        docs[d] = re.sub(r' +', ' ', docs[d])
-        words = string.split(docs[d])
-        ddict = dict()
-        for word in words:
-            if (word in vocab):
-                wordtoken = vocab[word]
-                if (not wordtoken in ddict):
-                    ddict[wordtoken] = 0
-                ddict[wordtoken] += 1
-        wordids.append(ddict.keys())
-        wordcts.append(ddict.values())
-
-    return((wordids, wordcts))
-
 class OnlineLDA:
     """
     Implements online VB for LDA as described in (Hoffman et al. 2010).
     """
 
-    def __init__(self, vocab, K, D, alpha, eta, tau0, kappa):
+    def __init__(self, K, alpha, eta, tau0, kappa):
         """
         Arguments:
         K: Number of topics
-        vocab: A set of words to recognize. When analyzing documents, any word
-           not in this set will be ignored.
-        D: Total number of documents in the population. For a fixed corpus,
-           this is the size of the corpus. In the truly online setting, this
-           can be an estimate of the maximum number of documents that
-           could ever be seen.
         alpha: Hyperparameter for prior on weight vectors theta
         eta: Hyperparameter for prior on topics beta
         tau0: A (positive) learning parameter that downweights early iterations
@@ -105,25 +50,96 @@ class OnlineLDA:
         Note that if you pass the same set of D documents in every time and
         set kappa=0 this class can also be used to do batch VB.
         """
-        self._vocab = dict()
-        for word in vocab:
-            word = word.lower()
-            word = re.sub(r'[^a-z]', '', word)
-            self._vocab[word] = len(self._vocab)
 
+        # set the model-level parameters
         self._K = K
-        self._W = len(self._vocab)
-        self._D = D
         self._alpha = alpha
         self._eta = eta
         self._tau0 = tau0 + 1
         self._kappa = kappa
+
+        # create an object to hold the vocabulary. 
+        self._vocab = DirichletWords(self._K)
+
+        # number of words in the vocabulary *so far*. initially 0
+        self._W = len(self._vocab) 
+
+        # number of documents seen *so far*
+        self._D = 0
+
+        # number of batches processed
         self._updatect = 0
 
         # Initialize the variational distribution q(beta|lambda)
+        # XXX TODO self._W is len(vocab). for stream processing this changes
+        # each iteration. we should move this to do_e_step(). 
+
+        # 1*n.random.gamma? 1*??
         self._lambda = 1*n.random.gamma(100., 1./100., (self._K, self._W))
         self._Elogbeta = dirichlet_expectation(self._lambda)
         self._expElogbeta = n.exp(self._Elogbeta)
+
+    def parse_new_docs(self, new_docs):
+        """
+        XXX TODO
+        docs are the new_docs; vocab is the current vocab. 
+
+        Parse a document into a list of word ids and a list of counts,
+        or parse a set of documents into two lists of lists of word ids
+        and counts.
+
+        Arguments: 
+        new_docs:  List of D documents. Each document must be represented as
+                    a single string. (Word order is unimportant.) 
+
+        Returns a pair of lists of lists:
+
+        The first, wordids, says what vocabulary tokens are present in
+        each document. wordids[i][j] gives the jth unique token present in
+        document i. (Don't count on these tokens being in any particular
+        order.)
+
+        The second, wordcts, says how many times each vocabulary token is
+        present. wordcts[i][j] is the number of times that the token given
+        by wordids[i][j] appears in document i.
+        """
+
+        # if a single doc was passed in, convert it to a list. 
+        if type(docs) == str:
+            docs = [docs,]
+            
+        D = len(docs)
+        
+        wordids = list()
+        wordcts = list()
+        for d in range(0, D):
+            docs[d] = docs[d].lower()
+            docs[d] = re.sub(r'-', ' ', docs[d])
+            docs[d] = re.sub(r'[^a-z ]', '', docs[d])
+            docs[d] = re.sub(r' +', ' ', docs[d])
+            words = string.split(docs[d])
+            ddict = dict()
+            for word in words:
+                # XXX YOU ARE HERE
+                
+                # update_count() wants a topicweight vector. if we've seen this
+                # topic before, grab the weights we have. otherwise, assume
+                # equal weighting/topic. 
+                # want self._lambda[:,w]
+                word_index = 
+                topic_weights = self._lambda        
+                self._vocab.update_count(word)            
+                ddict(
+                # gets the index ofthe word. 
+                if (word in vocab):
+                    wordtoken = vocab[word]
+                else:
+                    # estimate prior from monkey dist. 
+                ddict[wordtoken] = ddict.get(wordtoken, 0) + 1
+            wordids.append(ddict.keys())
+            wordcts.append(ddict.values())
+
+        return((wordids, wordcts))
 
     def do_e_step(self, docs):
         """
@@ -141,6 +157,7 @@ class OnlineLDA:
         """
         # This is to handle the case where someone just hands us a single
         # document, not in a list.
+        # XXX TODO replace with: if type(docs) == str: docs = [docs,]
         if (type(docs).__name__ == 'string'):
             temp = list()
             temp.append(docs)
@@ -295,3 +312,5 @@ class OnlineLDA:
                               gammaln(n.sum(self._lambda, 1)))
 
         return(score)
+        
+# XXX TODO add a method to the class for classification of new documents. documents

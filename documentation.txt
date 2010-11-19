@@ -1,0 +1,49 @@
+
+
+The primary method that the user will call is the update_lambda() method. 
+
+olda = onlineLDA(params) (`params' are the various user-specified params)
+olda.update_lambda(new_docs)
+|
+|___self.do_e_step(new_docs)
+|   |___ parse_doc_list(new_docs)
+|        * calculates the word counts for each word for each document. 
+|        * expands the dimensions as necessary for new vocabulary terms
+|        * returns wordids (wordids[i][j] is the jth unique token in doc i)
+|        * returns wordcts (wordcts[i][j] is the frequency of token j in doc i)
+|
+|   * calculates gamma and phi for this batch of new_docs (in keeping with the `online'
+|     algorithm, gamma and phi are not a function of previous batches)
+|   * returns gamma
+|   * returns something called sstats which is the second term in the lambda value:
+|     \sum_d n_{dw} * phi_{dwk}
+|
+|___self.approx_bound(docs, gamma)
+|   * calculates the likelihood of the new docs given the old value (from the
+|     previous round) of lambda. this is sort of like saying, if we stuck with
+|     these values, how good a predictor of the data would they be?
+|     essentially, what is the quality of the classifier at this stage?
+|   * returns bound 
+|
+|___updates self._lambda
+|___updates self._Elogbeta (the expectation of log(Beta)
+|___updates self._expElogbeta
+|   note that this Beta term, which is used in calculating phi, is updated here because 
+|   it is a model-level parameter, whereas the theta term of the expression for phi is 
+|   calculated for each document for each topic, in the do_e_step() function. 
+|___updates self._updatct (the number of batches seen so far; e.g. the number
+    of times update_lambda has been called. 
+
+=== Initialization ===
+
+Phi
+Gamma
+Lambda
+Vocabulary
+
+
+=== Model Parameters ===
+
+=== Classification ===
+
+
