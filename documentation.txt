@@ -1,4 +1,5 @@
 
+=== Algorithm Overview ===
 
 The primary method that the user will call is the update_lambda() method. 
 
@@ -45,5 +46,14 @@ Vocabulary
 === Model Parameters ===
 
 === Classification ===
+
+
+=== Unseen Vocabulary Terms ===
+
+In a fixed vocabulary problem, we can determine a set of word counts a priori. 
+
+In an online setting with a fixed vocabulary, it is also possible to see a
+"new" word in the sense that it might be in the vocabulary but not have been
+seen yet. 
 
 
