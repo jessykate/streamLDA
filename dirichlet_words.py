@@ -31,6 +31,8 @@ class DirichletWords(object):
                alpha_word = 1.0, max_tables = 50000):
 
     self._alphabet = FreqDist()
+    # store all words seen in a list so they are associated with a unique ID. 
+    self.indexes = []
     self._words = FreqDist()
 
     self.alpha_topic = alpha_topic
@@ -41,6 +43,9 @@ class DirichletWords(object):
 
   def __len__(self):
     return len(self._words)
+
+  def word_index(self, word):
+    return self.indexes.index(word)
 
   def forget(self, proportion):
 
@@ -89,7 +94,12 @@ class DirichletWords(object):
             self.alpha_topic * self.word_prob(word)) / \
             (self._topics[topic].N() + self.alpha_topic)
 
-  def update_count(self, word, topic, count=1):
+  def all_topic_probs(self, word):
+    ''' a convenience function to return a probability vector across all topics
+        for this word.'''
+    return [self.topic_prob(k, word) for k in self.num_topics]
+
+  def update_count(self, word, topic, count):
     # increment the count of the word in the specified topic
     self._topics[topic][word] += count
     # also keep a separate count of the number of times this word has appeared,
@@ -101,6 +111,17 @@ class DirichletWords(object):
     # be vounted here. 
     for ii in word:
       self._alphabet[ii] += count
+
+  def init_word(self, word):
+    ''' defines a new word by adding it to the index. since FreqDist() happily
+        return 0 when called on an unseen key, this is all we need to do, to
+        initialize a new word. Note that init_word() does NOT update the count.''' 
+    if word in self.indexes:
+        raise Exception, ('%s is already in the vocabulary' % word)
+    self.indexes.append(word)
+
+    return (len(self.indexes) -1)
+
 
   def print_probs(self, word):
     print "----------------"
