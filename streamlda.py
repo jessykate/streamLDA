@@ -16,6 +16,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+# XXX QUESTIONS
+# 1. should wordids and wordcts use the cts directly or the probabilities from
+# _lambda?
+
 import sys, re, time, string
 import numpy as n
 from scipy.special import gammaln, psi
@@ -26,13 +30,17 @@ meanchangethresh = 0.001
 
 def dirichlet_expectation(alpha):
     """
+    alpha is a W by K dimensional matric. 
     For a vector theta ~ Dir(alpha), computes E[log(theta)] given alpha.
+    Returns a W x K matrix. 
     """
-    if (len(alpha.shape) == 1):
+
+    # len(alpha) for an n.random.gamma obj is k, or num topics. 
+    if (len(alpha) == 1):
         return(psi(alpha) - psi(n.sum(alpha)))
     return(psi(alpha) - psi(n.sum(alpha, 1))[:, n.newaxis])
 
-class OnlineLDA:
+class StreamLDA:
     """
     Implements online VB for LDA as described in (Hoffman et al. 2010).
     """
@@ -58,12 +66,6 @@ class OnlineLDA:
         self._tau0 = tau0 + 1
         self._kappa = kappa
 
-        # create an object to hold the vocabulary. 
-        self._vocab = DirichletWords(self._K)
-
-        # number of words in the vocabulary *so far*. initially 0
-        self._W = len(self._vocab) 
-
         # number of documents seen *so far*. Updated each time a new batch is
         # submitted. 
         self._D = 0
@@ -71,16 +73,26 @@ class OnlineLDA:
         # number of batches processed so far. 
         self._batches_to_date = 0
 
-        # Initialize the variational distribution q(beta|lambda)
-        # XXX TODO self._W is len(vocab). for stream processing this changes
-        # each iteration. we should move this to do_e_step(). 
+        # Initialize lambda as a DirichletWords object which has a non-zero
+        # probability for any character sequence, even those unseen. 
+        self._lambda = DirichletWords(self._K)
 
-        # initalize lambda to an empty numpy array
-        self._lambda = n.zeros((self._K, 0))
-        #self._lambda = 1*n.random.gamma(100., 1./100., (self._K, self._W))
-        self._Elogbeta = dirichlet_expectation(self._lambda)
-        self._expElogbeta = n.exp(self._Elogbeta)
+        # Current estimate of the k-dimensional topic proportions theta, which
+        # in general are estimated from gamma, and summed over all
+        # documents and normalized to get a propability over topics. Note that
+        # here we initialize theta to a symmetric prior.
+        self._theta = n.ones(self._K)*1./(self._K)
 
+        # number of words in the vocabulary *so far*. initially some small
+        # non-zero number based on the random topic initialization. 
+        self._W = len(self._lambda)
+
+        # do NOT initialize these here-- do that after we parse the words for
+        # this batch so that the dimensions match. 
+        self._Elogbeta = None #dirichlet_expectation(self._lambda)
+        self._expElogbeta = None #n.exp(self._Elogbeta)
+
+        
     def parse_new_docs(self, new_docs):
         """
         Parse a document into a list of word ids and a list of counts,
@@ -89,7 +101,7 @@ class OnlineLDA:
 
         Arguments: 
         new_docs:  List of D documents. Each document must be represented as
-                    a single string. (Word order is unimportant.) 
+                   a single string. (Word order is unimportant.) 
 
         Returns a pair of lists of lists:
 
@@ -104,43 +116,27 @@ class OnlineLDA:
         """
 
         # if a single doc was passed in, convert it to a list. 
-        if type(docs) == str:
-            docs = [docs,]
+        if type(new_docs) == str:
+            new_docs = [new_docs,]
             
-        D = len(docs)
+        D = len(new_docs)
         # increment the count of total docs seen over all batches. 
         self._D += D
 
         wordids = list()
         wordcts = list()
         for d in range(0, D):
-            docs[d] = docs[d].lower()
-            docs[d] = re.sub(r'-', ' ', docs[d])
-            docs[d] = re.sub(r'[^a-z ]', '', docs[d])
-            docs[d] = re.sub(r' +', ' ', docs[d])
-            words = string.split(docs[d])
+            print 'parsing document %d...' % d
+            new_docs[d] = new_docs[d].lower()
+            new_docs[d] = re.sub(r'-', ' ', new_docs[d])
+            new_docs[d] = re.sub(r'[^a-z ]', '', new_docs[d])
+            new_docs[d] = re.sub(r' +', ' ', new_docs[d])
+            words = string.split(new_docs[d])
             batch_counts = {}
             for word in words:
-                if word in self._vocab._words:
-                    # grab word_index from vocab
-                    w = self._vocab.word_index(w)
-                    # get current topic weights
-                    topic_weights = self._lambda[:,w]
-                else:
-                    # register the new word with the vocabulary and define a
-                    # unique index for it. 
-                    w = self._vocab.init_word(word)
-                    # create a new entry in lambda. we initialize the topic
-                    # weights for the new word with the implicit prior from our
-                    # 'monkey-at-a-typrewriter' distribution. 
-                    topic_weights = self._vocab.all_topic_probs(word)
-                    num_words = self._lambda.shape[1]
-                    self._lambda = n.resize(self._lambda, (self._K, num_words+1))
-                    self._lambda[:,w] = topic_weights
-                for topic in self._K:
-                    # this is a bit weird-- we are passing back in th topic
-                    # weights we just pulled out of the vocab object!
-                    self._vocab.update_count(word, topic,topic_weights[topic])
+                # use the current topic mixing weights for this new observation 
+                for k in self._K:
+                    self._lambda.update_count(word, k, self._theta[k])
                 batch_counts[w] = batch_counts.get(w, 0) + self._vocab._words[word]
 
             # wordids contains the ids of words seen in this batch, broken down
@@ -148,6 +144,17 @@ class OnlineLDA:
             wordids.append(batch_counts.keys())
             # wordcts contains counts of those same words, again per document. 
             wordcts.append(batch_counts.values())
+        
+        # XXX TODO check this is in the right place:
+        # set the variational distribution q(beta|lambda). in onlineLDA, this
+        # is done in init(), but we need Elogbeta to be the same dimension as
+        # lambda, so instead we initialize it here from lambda. note that
+        # self._Elogbeta is overwritten with a new value (as a function of
+        # lambda) each batch. 
+        # XXX alternatively, we could initialize this to random values like was
+        # done in onlineLDA. 
+        self._Elogbeta = dirichlet_expectation(self._lambda.as_matrix())
+        self._expElogbeta = n.exp(self._Elogbeta)
 
         return((wordids, wordcts))
 
@@ -169,28 +176,29 @@ class OnlineLDA:
         # document, not in a list.
         if type(docs) == str: docs = [docs,]
        
-        (wordids, wordcts) = parse_doc_list(docs, self._vocab)
+        (wordids, wordcts) = self.parse_new_docs(docs)
         batchD = len(docs)
 
         # Initialize the variational distribution q(theta|gamma) for
         # the mini-batch
-        gamma = 1*n.random.gamma(100., 1./100., (batchD, self._K))
-        Elogtheta = dirichlet_expectation(gamma)
+        gamma = 1*n.random.gamma(100., 1./100., (batchD, self._K)) # batchD x K
+        Elogtheta = dirichlet_expectation(gamma) # D x K
         expElogtheta = n.exp(Elogtheta)
-
+        
         sstats = n.zeros(self._lambda.shape)
 
         # Now, for each document d update that document's gamma and phi
         it = 0
         meanchange = 0
         for d in range(0, batchD):
+            print 'Batch document %d' % d
             # These are mostly just shorthand (but might help cache locality)
             ids = wordids[d]
             cts = wordcts[d]
             gammad = gamma[d, :]
-            Elogthetad = Elogtheta[d, :]
-            expElogthetad = expElogtheta[d, :]
-            expElogbetad = self._expElogbeta[:, ids]
+            Elogthetad = Elogtheta[d, :] # K x 1
+            expElogthetad = expElogtheta[d, :] # k x 1 for this D. 
+            expElogbetad = self._expElogbeta[:, ids] # k's for this d for each word
             # The optimal phi_{dwk} is proportional to 
             # expElogthetad_k * expElogbetad_w. phinorm is the normalizer.
             phinorm = n.dot(expElogthetad, expElogbetad) + 1e-100
@@ -221,6 +229,10 @@ class OnlineLDA:
         # sstats[k, w] = \sum_d n_{dw} * phi_{dwk} 
         # = \sum_d n_{dw} * exp{Elogtheta_{dk} + Elogbeta_{kw}} / phinorm_{dw}.
         sstats = sstats * self._expElogbeta
+
+        # save the normalized sum over all documents as the current estimate of
+        # the topic proportions, theta:
+        self._theta = n.sum(gamma, 0)
 
         return((gamma, sstats))
 
@@ -258,7 +270,7 @@ class OnlineLDA:
         # Update lambda based on documents.
         self._lambda = self._lambda * (1-rhot) + \
             rhot * (self._eta + self._D * sstats / len(docs))
-        self._Elogbeta = dirichlet_expectation(self._lambda)
+        self._Elogbeta = dirichlet_expectation(self._lambda.as_matrix())
         self._expElogbeta = n.exp(self._Elogbeta)
         self._batches_to_date += 1
 
@@ -282,7 +294,7 @@ class OnlineLDA:
             temp.append(docs)
             docs = temp
 
-        (wordids, wordcts) = parse_doc_list(docs, self._vocab)
+        (wordids, wordcts) = self.parse_new_docs(docs)
         batchD = len(docs)
 
         score = 0
