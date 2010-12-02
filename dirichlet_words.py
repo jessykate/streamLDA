@@ -22,8 +22,16 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from nltk import FreqDist
+import string, random
 
 CHAR_SMOOTHING = 1 / 10000.
+
+
+def probability_vector(dims):
+    ''' generates a randomized probability vector of the specified dimensions
+    (sums up to one) '''
+    values = [random.random() for d in xrange(dims)]
+    return [v/sum(values) for v in values]
 
 class DirichletWords(object):
 
@@ -41,8 +49,49 @@ class DirichletWords(object):
     self.num_topics = num_topics
     self._topics = [FreqDist() for x in xrange(num_topics)]
 
+  def initialize_topics(self):
+    ''' initializes the topics with some random seed words so that they have
+        enough relative bias to actually evolve when new words are passed in.
+    '''
+    # we are going to create some random string from /dev/urandom. to convert
+    # them to a string, we need a translation table that is 256 characters. 
+    translate_table = (string.letters*5)[:256]
+    # /dev/urandom is technically not as random as /dev/random, but it doesn't
+    # block. 
+    r = open('/dev/urandom')
+    # make a 100 random 'words' between length 3 and 9 (just 'cuz), and
+    # add them to the topics. they'll never realistically be seen again, but
+    # that shouldn't matter. 
+    for i in xrange(100):
+        num = random.randint(3,9)
+        word = r.read(num).translate(translate_table)
+        topic_weights = probability_vector(self.num_topics)
+        for k in self.num_topics:
+            self.update_count(word, k, topic_weights[k])
+    r.close()
+
   def __len__(self):
     return len(self._words)
+
+  def as_matrix(self):
+    '''  Return a matrix of the probabilities of all words over all topics. '''
+    
+    #  XXX TODO should we just store this on the fly instead of recomputing it
+    #  each batch?
+
+    # each each topic is one column of the matrix. self.topics[x][y] is the
+    # frequency count of word x in topic y, but we want the *probability* of
+    # each word in each topic, so we need to call topic_prob() to make sure we
+    # retrieve the smoothed values which incorporate our backoff assumptions. 
+
+    # use a numpy array because that's what the dirichlet function
+    # expects. 
+    num_words = len(self.indexes)
+    lambda_matrix = n.zeros(self.num_topics, num_words)
+    for word_index, word in enumerate(self.indexes):
+        topic_weights = [self.topic_prob(k, word) for k in self.num_topics]
+        lambda_matrix[:word_index] = topic_weights
+    return lambda_matrix
 
   def word_index(self, word):
     return self.indexes.index(word)
@@ -54,6 +103,7 @@ class DirichletWords(object):
     if num_tables > max_tables:
       number_to_forget += (num_tables - max_tables)
     
+    # change this to weight lower probability
     tables_to_forget = random.sample(xrange(num_tables), number_to_forget)
     words = self._words.keys()
 
@@ -97,7 +147,7 @@ class DirichletWords(object):
   def all_topic_probs(self, word):
     ''' a convenience function to return a probability vector across all topics
         for this word.'''
-    return [self.topic_prob(k, word) for k in self.num_topics]
+    return [self.topic_prob(k, word) for k in xrange(self.num_topics)]
 
   def update_count(self, word, topic, count):
     # increment the count of the word in the specified topic
