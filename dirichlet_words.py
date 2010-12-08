@@ -26,7 +26,6 @@ import string, random
 
 CHAR_SMOOTHING = 1 / 10000.
 
-
 def probability_vector(dims):
     ''' generates a randomized probability vector of the specified dimensions
     (sums up to one) '''
@@ -74,22 +73,21 @@ class DirichletWords(object):
     return len(self._words)
 
   def as_matrix(self):
-    '''  Return a matrix of the probabilities of all words over all topics. '''
+    ''' Return a matrix of the probabilities of all words over all topics.
+        note that because we are using topic_prob(), this is equivalent to he
+        expectation of log beta, ie Elogbeta '''
     
     #  XXX TODO should we just store this on the fly instead of recomputing it
     #  each batch?
 
-    # each each topic is one column of the matrix. self.topics[x][y] is the
-    # frequency count of word x in topic y, but we want the *probability* of
-    # each word in each topic, so we need to call topic_prob() to make sure we
-    # retrieve the smoothed values which incorporate our backoff assumptions. 
-
-    # use a numpy array because that's what the dirichlet function
-    # expects. 
+    # create a numpy array here because that's what the e_step expects to work
+    # with. 
     num_words = len(self.indexes)
+    # topics are the rows, and words are the columns. 
     lambda_matrix = n.zeros(self.num_topics, num_words)
     for word_index, word in enumerate(self.indexes):
         topic_weights = [self.topic_prob(k, word) for k in self.num_topics]
+        # topic weights for this word-- a column vector. 
         lambda_matrix[:word_index] = topic_weights
     return lambda_matrix
 
@@ -179,26 +177,21 @@ class DirichletWords(object):
             self.alpha_topic * self.word_prob(word)) / \
             (self._topics[topic].N() + self.alpha_topic)
 
-  def all_topic_probs(self, word):
-    ''' a convenience function to return a probability vector across all topics
-        for this word.'''
-    return [self.topic_prob(k, word) for k in xrange(self.num_topics)]
-
-  def update_count(self, word, topic, count):
+  def update_count(self, word, topic, freq):
     # create an index for the word
     if word not in self.indexes:
       self.indexes.append(word)
-    # increment the count of the word in the specified topic
-    self._topics[topic][word] += count
-    # also keep a separate count of the number of times this word has appeared,
-    # across all documents. 
-    self._words[word] += count
-    # finally, keep track of how many times each character has been observed.
+    # increment the frequency of the word in the specified topic
+    self._topics[topic][word] += freq
+    # also keep a separate frequency count of the number of times this word has
+    # appeared, across all documents. 
+    self._words[word] += freq
+    # finally, keep track of the frequency of appearance for each character.
     # note that this does not assume any particular character set nor limit
     # recognized characters. if words contain punctuation, etc. then they will
     # be counted here. 
     for ii in word:
-      self._alphabet[ii] += count
+      self._alphabet[ii] += freq
 
   def print_probs(self, word):
     print "----------------"
