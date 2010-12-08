@@ -16,10 +16,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# XXX QUESTIONS
-# 1. should wordids and wordcts use the cts directly or the probabilities from
-# _lambda?
-
 import sys, re, time, string
 import numpy as n
 from scipy.special import gammaln, psi
@@ -42,8 +38,8 @@ def dirichlet_expectation(alpha):
 
 class StreamLDA:
     """
-    Implements online VB for LDA as described in (Hoffman et al. 2010).
-    """
+    Implements stream-based LDA as an extension to online Variational Bayes for
+    LDA, as described in (Hoffman et al. 2010).  """
 
     def __init__(self, K, alpha, eta, tau0, kappa):
         """
@@ -77,20 +73,12 @@ class StreamLDA:
         # probability for any character sequence, even those unseen. 
         self._lambda = DirichletWords(self._K)
 
-        # Current estimate of the k-dimensional topic proportions theta, which
-        # in general are estimated from gamma, and summed over all
-        # documents and normalized to get a propability over topics. Note that
-        # here we initialize theta to a symmetric prior.
-        self._theta = n.ones(self._K)*1./(self._K)
-
-        # number of words in the vocabulary *so far*. initially some small
-        # non-zero number based on the random topic initialization. 
-        self._W = len(self._lambda)
-
-        # do NOT initialize these here-- do that after we parse the words for
-        # this batch so that the dimensions match. 
-        self._Elogbeta = None #dirichlet_expectation(self._lambda)
-        self._expElogbeta = None #n.exp(self._Elogbeta)
+        # set the variational distribution q(beta|lambda). 
+        # we need Elogbeta to be the same dimension as lambda, note that
+        # self._Elogbeta is overwritten with a new value (as a function of
+        # lambda) each batch. 
+        self._Elogbeta = dirichlet_expectation(self._lambda)
+        self._expElogbeta = n.exp(self._Elogbeta)
 
         
     def parse_new_docs(self, new_docs):
@@ -127,35 +115,31 @@ class StreamLDA:
         wordcts = list()
         for d in range(0, D):
             print 'parsing document %d...' % d
+            # remove non-alpha characters, normalize case and tokenize on
+            # spaces
             new_docs[d] = new_docs[d].lower()
             new_docs[d] = re.sub(r'-', ' ', new_docs[d])
             new_docs[d] = re.sub(r'[^a-z ]', '', new_docs[d])
             new_docs[d] = re.sub(r' +', ' ', new_docs[d])
             words = string.split(new_docs[d])
-            batch_counts = {}
+            doc_counts = {}
             for word in words:
+                # index returns the unique index for word. if word has not been
+                # seen before, a new index is created. 
+                wordindex = self._lambda.index(word)
+                doc_counts[wordindex] = doc_counts.get(wordindex, 0) + 1
+
                 # use the current topic mixing weights for this new observation 
-                for k in self._K:
-                    self._lambda.update_count(word, k, self._theta[k])
-                batch_counts[w] = batch_counts.get(w, 0) + self._vocab._words[word]
+                #for k in self._K:
+                #    self._lambda.update_count(word, k, self._theta[k])
+                #batch_counts[w] = batch_counts.get(word, 0) + self._lambda._words[word]
 
             # wordids contains the ids of words seen in this batch, broken down
             # as one list of words per document in the batch. 
-            wordids.append(batch_counts.keys())
+            wordids.append(doc_counts.keys())
             # wordcts contains counts of those same words, again per document. 
-            wordcts.append(batch_counts.values())
+            wordcts.append(doc_counts.values())
         
-        # XXX TODO check this is in the right place:
-        # set the variational distribution q(beta|lambda). in onlineLDA, this
-        # is done in init(), but we need Elogbeta to be the same dimension as
-        # lambda, so instead we initialize it here from lambda. note that
-        # self._Elogbeta is overwritten with a new value (as a function of
-        # lambda) each batch. 
-        # XXX alternatively, we could initialize this to random values like was
-        # done in onlineLDA. 
-        self._Elogbeta = dirichlet_expectation(self._lambda.as_matrix())
-        self._expElogbeta = n.exp(self._Elogbeta)
-
         return((wordids, wordcts))
 
     def do_e_step(self, docs):
@@ -185,7 +169,9 @@ class StreamLDA:
         Elogtheta = dirichlet_expectation(gamma) # D x K
         expElogtheta = n.exp(Elogtheta)
         
-        sstats = n.zeros(self._lambda.shape)
+        # instead of sstats create a new lambda
+        # sstats = n.zeros(self._lambda.shape())
+        new_lambda = DirichetWords(self._K)
 
         # Now, for each document d update that document's gamma and phi
         it = 0
@@ -222,19 +208,25 @@ class StreamLDA:
             # Contribution of document d to the expected sufficient
             # statistics for the M step. Updates the statistics only for words
             # in ids list, with their respective counts in cts (also a list).
-            sstats[:, ids] += n.outer(expElogthetad.T, cts/phinorm)
+            # OLD
+            # sstats[:, ids] += n.outer(expElogthetad.T, cts/phinorm)
+            # NEW:
+            phi = n.outer(expElogthetad.T, cts/phinorm)
+            for wordid, ct in zip(ids, cts):
+                for topic in self._K:
+                    new_lambda.update_counts(word, phi[wordid,topic]*self._expElogbeta)
 
         # This step finishes computing the sufficient statistics for the
         # M step, so that
         # sstats[k, w] = \sum_d n_{dw} * phi_{dwk} 
         # = \sum_d n_{dw} * exp{Elogtheta_{dk} + Elogbeta_{kw}} / phinorm_{dw}.
-        sstats = sstats * self._expElogbeta
 
-        # save the normalized sum over all documents as the current estimate of
-        # the topic proportions, theta:
-        self._theta = n.sum(gamma, 0)
+        # previously, here we had sstats = sstats * self._expElogbeta. we do
+        # the equivalent by multiplying each of the phi values above by
+        # self._expElogbeta, folding in that product on the fly. 
+        # sstats = sstats * self._expElogbeta
 
-        return((gamma, sstats))
+        return((gamma, new_lambda))
 
     def update_lambda(self, docs):
         """
@@ -264,12 +256,12 @@ class StreamLDA:
         # Do an E step to update gamma, phi | lambda for this
         # mini-batch. This also returns the information about phi that
         # we need to update lambda.
-        (gamma, sstats) = self.do_e_step(docs)
+        (gamma, new_lambda) = self.do_e_step(docs)
         # Estimate held-out likelihood for current values of lambda.
         bound = self.approx_bound(docs, gamma)
         # Update lambda based on documents.
-        self._lambda = self._lambda * (1-rhot) + \
-            rhot * (self._eta + self._D * sstats / len(docs))
+        self._lambda.merge(new_lambda, rhot)
+        
         self._Elogbeta = dirichlet_expectation(self._lambda.as_matrix())
         self._expElogbeta = n.exp(self._Elogbeta)
         self._batches_to_date += 1
@@ -329,7 +321,7 @@ class StreamLDA:
         # E[log p(beta | eta) - log q (beta | lambda)]
         score = score + n.sum((self._eta-self._lambda)*self._Elogbeta)
         score = score + n.sum(gammaln(self._lambda) - gammaln(self._eta))
-        score = score + n.sum(gammaln(self._eta*self._W) - 
+        score = score + n.sum(gammaln(self._eta*len(self._lambda)) - 
                               gammaln(n.sum(self._lambda, 1)))
 
         return(score)
