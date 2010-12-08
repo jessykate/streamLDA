@@ -244,7 +244,13 @@ class StreamLDA:
         # Update lambda based on documents.
         self._lambda.merge(new_lambda, rhot)
         
-        # expectation of log(beta) is from our lambda object
+        # do some housekeeping - is lambda getting too big?
+        oversize_by = len(self._lambda._words) - self._lambda.max_tables
+        if oversize_by > 0:
+            percent_to_forget = oversize_by/len(self._lambda._words)
+            self._lambda.forget(percent_to_forget)
+
+        # update expected values of log beta from our lambda object
         self._Elogbeta = self._lambda.as_matrix()
         self._expElogbeta = n.exp(self._Elogbeta)
         self._batches_to_date += 1
