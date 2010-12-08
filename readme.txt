@@ -1,17 +1,15 @@
-ONLINE VARIATIONAL BAYES FOR LATENT DIRICHLET ALLOCATION
+STREAM VARIATIONAL BAYES FOR LATENT DIRICHLET ALLOCATION
 
-This is an implementation of online variational bayes for LDA. The code written
-by Matt Hoffman is being modified to support arbitrary vocabulary and
-stream-like sources of arbitrary number. 
+Stream LDA implements a version of the LDA algorithm such that a continuous
+stream of documents can be passed in. The classifier will continue to learn
+new words and refine the topics over time, while maintaining a constant bound
+on memory requirements. 
 
+Original implementation by Matthew D. Hoffman (mdhoffma@cs.princeton.edu), (C)
+Copyright 2009, Matthew D. Hoffman
 
-Matthew D. Hoffman
-mdhoffma@cs.princeton.edu
-(C) Copyright 2010, Matthew D. Hoffman
-
-Modifications made by Jessy Cowan-Sharp and Jordan Boyd-Grader
-jessy.cowansharp@gmail.com
-jbg@umiacs.umd.edu
+Extensions by Jessy Cowan-Sharp (jessy.cowansharp@gmail.com) and Jordan
+Boyd-Grader (jbg@umiacs.umd.edu)
 
 ------------------------------------------------------------------------
 
