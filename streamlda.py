@@ -74,10 +74,7 @@ class StreamLDA:
         self._lambda = DirichletWords(self._K)
 
         # set the variational distribution q(beta|lambda). 
-        # we need Elogbeta to be the same dimension as lambda, note that
-        # self._Elogbeta is overwritten with a new value (as a function of
-        # lambda) each batch. 
-        self._Elogbeta = dirichlet_expectation(self._lambda)
+        self._Elogbeta = self._lambda.as_matrix()
         self._expElogbeta = n.exp(self._Elogbeta)
 
         
@@ -129,11 +126,6 @@ class StreamLDA:
                 wordindex = self._lambda.index(word)
                 doc_counts[wordindex] = doc_counts.get(wordindex, 0) + 1
 
-                # use the current topic mixing weights for this new observation 
-                #for k in self._K:
-                #    self._lambda.update_count(word, k, self._theta[k])
-                #batch_counts[w] = batch_counts.get(word, 0) + self._lambda._words[word]
-
             # wordids contains the ids of words seen in this batch, broken down
             # as one list of words per document in the batch. 
             wordids.append(doc_counts.keys())
@@ -156,7 +148,7 @@ class StreamLDA:
         Returns a tuple containing the estimated values of gamma,
         as well as sufficient statistics needed to update lambda.
         """
-        # This is to handle the case where someone just hands us a single
+        # This is to handle the case where someone just passes in a single
         # document, not in a list.
         if type(docs) == str: docs = [docs,]
        
@@ -184,7 +176,7 @@ class StreamLDA:
             gammad = gamma[d, :]
             Elogthetad = Elogtheta[d, :] # K x 1
             expElogthetad = expElogtheta[d, :] # k x 1 for this D. 
-            expElogbetad = self._expElogbeta[:, ids] # k's for this d for each word
+            expElogbetad = self._expElogbeta[:, ids] # k x len(new_docs)
             # The optimal phi_{dwk} is proportional to 
             # expElogthetad_k * expElogbetad_w. phinorm is the normalizer.
             phinorm = n.dot(expElogthetad, expElogbetad) + 1e-100
@@ -192,9 +184,10 @@ class StreamLDA:
             # Iterate between gamma and phi until convergence
             for it in range(0, 100):
                 lastgamma = gammad
-                # We represent phi implicitly to save memory and time.
-                # Substituting the value of the optimal phi back into
-                # the update for gamma gives this update. Cf. Lee&Seung 2001.
+                # In these steps, phi is represented implicitly to save memory
+                # and time.  Substituting the value of the optimal phi back
+                # into the update for gamma gives this update. Cf. Lee&Seung
+                # 2001.
                 gammad = self._alpha + expElogthetad * \
                     n.dot(cts / phinorm, expElogbetad.T)
                 Elogthetad = dirichlet_expectation(gammad)
@@ -208,45 +201,34 @@ class StreamLDA:
             # Contribution of document d to the expected sufficient
             # statistics for the M step. Updates the statistics only for words
             # in ids list, with their respective counts in cts (also a list).
-            # OLD
-            # sstats[:, ids] += n.outer(expElogthetad.T, cts/phinorm)
-            # NEW:
-            phi = n.outer(expElogthetad.T, cts/phinorm)
+            # the multiplying factor from self._expElogbeta
+            # lambda_stats is basically phi multiplied by the word counts. the
+            # sum over documents shown in equation (5) happens as each document
+            # is iterated over. 
+            lambda_stats = n.outer(expElogthetad.T, cts/phinorm) * self._expElogbeta
             for wordid, ct in zip(ids, cts):
                 for topic in self._K:
-                    new_lambda.update_counts(word, phi[wordid,topic]*self._expElogbeta)
-
-        # This step finishes computing the sufficient statistics for the
-        # M step, so that
-        # sstats[k, w] = \sum_d n_{dw} * phi_{dwk} 
-        # = \sum_d n_{dw} * exp{Elogtheta_{dk} + Elogbeta_{kw}} / phinorm_{dw}.
-
-        # previously, here we had sstats = sstats * self._expElogbeta. we do
-        # the equivalent by multiplying each of the phi values above by
-        # self._expElogbeta, folding in that product on the fly. 
-        # sstats = sstats * self._expElogbeta
+                    # lambda_stats_wk = n_dw * phi_dwk
+                    stats_wk = lambda_stats[topic, word]
+                    new_lambda.update_counts(word, topic, stats_wk)
 
         return((gamma, new_lambda))
 
     def update_lambda(self, docs):
         """
-        First does an E step on the mini-batch given in wordids and
-        wordcts, then uses the result of that E step to update the
-        variational parameter matrix lambda.
+        The primary function called by the user. First does an E step on the
+        mini-batch given in wordids and wordcts, then uses the result of that E
+        step to update the variational parameter matrix lambda.
 
-        Arguments:
-        docs:  List of D documents. Each document must be represented
-               as a string. (Word order is unimportant.) Any
-               words not in the vocabulary will be ignored.
+        docs is a list of D documents each represented as a string. (Word order
+        is unimportant.) 
 
-        Returns gamma, the parameters to the variational distribution
-        over the topic weights theta for the documents analyzed in this
-        update.
+        Returns gamma, the parameters to the variational distribution over the
+        topic weights theta for the documents analyzed in this update.
 
-        Also returns an estimate of the variational bound for the
-        entire corpus for the OLD setting of lambda based on the
-        documents passed in. This can be used as a (possibly very
-        noisy) estimate of held-out likelihood.
+        Also returns an estimate of the variational bound for the entire corpus
+        for the OLD setting of lambda based on the documents passed in. This
+        can be used as a (possibly very noisy) estimate of held-out likelihood.  
         """
 
         # rhot will be between 0 and 1, and says how much to weight
@@ -262,7 +244,8 @@ class StreamLDA:
         # Update lambda based on documents.
         self._lambda.merge(new_lambda, rhot)
         
-        self._Elogbeta = dirichlet_expectation(self._lambda.as_matrix())
+        # expectation of log(beta) is from our lambda object
+        self._Elogbeta = self._lambda.as_matrix()
         self._expElogbeta = n.exp(self._Elogbeta)
         self._batches_to_date += 1
 
@@ -304,11 +287,6 @@ class StreamLDA:
                 tmax = max(temp)
                 phinorm[i] = n.log(sum(n.exp(temp - tmax))) + tmax
             score += n.sum(cts * phinorm)
-#             oldphinorm = phinorm
-#             phinorm = n.dot(expElogtheta[d, :], self._expElogbeta[:, ids])
-#             print oldphinorm
-#             print n.log(phinorm)
-#             score += n.sum(cts * n.log(phinorm))
 
         # E[log p(theta | alpha) - log q(theta | gamma)]
         score += n.sum((self._alpha - gamma)*Elogtheta)
@@ -326,4 +304,3 @@ class StreamLDA:
 
         return(score)
         
-# XXX TODO add a method to the class for classification of new documents. documents
