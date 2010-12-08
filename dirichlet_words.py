@@ -93,7 +93,9 @@ class DirichletWords(object):
         lambda_matrix[:word_index] = topic_weights
     return lambda_matrix
 
-  def word_index(self, word):
+  def index(self, word):
+    if word not in self.indexes:
+      self.indexes.append(word)
     return self.indexes.index(word)
 
   def forget(self, proportion):
@@ -135,6 +137,38 @@ class DirichletWords(object):
     
     return val
 
+  def merge(self, otherlambda, rhot):
+    ''' fold the word probabilities of another DirichletWords object into this
+        one. assumes self.num_topics is the same for both. '''
+    all_words = self.words() + otherlambda.words()
+    distinct_words = list(set(all_words))
+
+    # combines the probabilities, with otherlambda weighted by rho, and
+    # generates a new 'count' by combining the number of words in the old
+    # (current) lambda with the number in the new. here we essentially take
+    # the same steps as update_count but do so explicitly so we can weight the
+    # terms appropriately. 
+    for word in distinctwords:
+      count_self = self._words[word]
+      count_other = otherlambda._words[word]
+      if word not in self.indexes:
+        self.indexes.append(word)
+      # update word counts
+      # XXX should we be summing word_prob() or _words[word] values?
+      self._words[word] = ((1-rhot)*self._words[word] \
+                        + rhot*otherlambda._words[word])\
+                        * (count_self + count_other)
+      # update topic counts
+      for topic in self.num_topics:
+        self._topics[topic][word] = ((1-rhot)*self._topics[topic][word] \
+                                    + rhot*otherlambda._topics[topic][word])\
+                                    *(count_self + count_other)
+      # update sequence counts
+      for ii in word:
+        self._alphabet[ii] = ((1-rhot)*self._alphabet[ii] \
+                            + rhot*otherlambda._alphabet[ii])\
+                            *(count_self + count_other)
+
   def word_prob(self, word):
     return (self._words[word] + self.alpha_word * self.seq_prob(word)) / \
            (self._words.N() + self.alpha_word)
@@ -150,6 +184,9 @@ class DirichletWords(object):
     return [self.topic_prob(k, word) for k in xrange(self.num_topics)]
 
   def update_count(self, word, topic, count):
+    # create an index for the word
+    if word not in self.indexes:
+      self.indexes.append(word)
     # increment the count of the word in the specified topic
     self._topics[topic][word] += count
     # also keep a separate count of the number of times this word has appeared,
@@ -158,20 +195,9 @@ class DirichletWords(object):
     # finally, keep track of how many times each character has been observed.
     # note that this does not assume any particular character set nor limit
     # recognized characters. if words contain punctuation, etc. then they will
-    # be vounted here. 
+    # be counted here. 
     for ii in word:
       self._alphabet[ii] += count
-
-  def init_word(self, word):
-    ''' defines a new word by adding it to the index. since FreqDist() happily
-        return 0 when called on an unseen key, this is all we need to do, to
-        initialize a new word. Note that init_word() does NOT update the count.''' 
-    if word in self.indexes:
-        raise Exception, ('%s is already in the vocabulary' % word)
-    self.indexes.append(word)
-
-    return (len(self.indexes) -1)
-
 
   def print_probs(self, word):
     print "----------------"
