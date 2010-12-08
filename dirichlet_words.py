@@ -5,8 +5,7 @@
 # from a base distribution over words shared among all topics. The word
 # distribution backs off to a monkey at a typwriter distribution.
 #
-# Written by Jordan Boyd-Graber
-# Modifications by Jessy Cowan-Sharp
+# Written by Jordan Boyd-Graber and Jessy Cowan-Sharp
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
