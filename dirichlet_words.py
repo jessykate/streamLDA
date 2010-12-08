@@ -148,26 +148,27 @@ class DirichletWords(object):
     # (current) lambda with the number in the new. here we essentially take
     # the same steps as update_count but do so explicitly so we can weight the
     # terms appropriately. 
+    total_words = self._words.N() + otherlambda._words.N()
+    topic_totals = [self._topics[i].N() + otherlambda._topics[i].N() for i in self.num_topics]
+    total_chars = self._alphabet.N() + otherlambda._alphabet.N()
     for word in distinctwords:
-      count_self = self._words[word]
-      count_other = otherlambda._words[word]
       if word not in self.indexes:
         self.indexes.append(word)
       # update word counts
       # XXX should we be summing word_prob() or _words[word] values?
       self._words[word] = ((1-rhot)*self._words[word] \
                         + rhot*otherlambda._words[word])\
-                        * (count_self + count_other)
+                        * total_words
       # update topic counts
       for topic in self.num_topics:
         self._topics[topic][word] = ((1-rhot)*self._topics[topic][word] \
                                     + rhot*otherlambda._topics[topic][word])\
-                                    *(count_self + count_other)
+                                    * topic_totals[topic]
       # update sequence counts
       for ii in word:
         self._alphabet[ii] = ((1-rhot)*self._alphabet[ii] \
                             + rhot*otherlambda._alphabet[ii])\
-                            *(count_self + count_other)
+                            * total_chars
 
   def word_prob(self, word):
     return (self._words[word] + self.alpha_word * self.seq_prob(word)) / \
