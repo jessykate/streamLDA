@@ -32,10 +32,12 @@ USA
 
 ------------------------------------------------------------------------
 
-This Python code implements the online Variational Bayes (VB)
-algorithm presented in the paper "Online Learning for Latent Dirichlet
+This Python code is based on the implementation of the online Variational Bayes
+(VB) algorithm presented in the paper "Online Learning for Latent Dirichlet
 Allocation" by Matthew D. Hoffman, David M. Blei, and Francis Bach,
-to be presented at NIPS 2010.
+to be presented at NIPS 2010. It has been extended to support arbitrary streams
+of documents without constraining the vocabulary or requiring knowledge of the
+total number of predicted documents. 
 
 The algorithm uses stochastic optimization to maximize the variational
 objective function for the Latent Dirichlet Allocation (LDA) topic model.
@@ -46,25 +48,31 @@ VB algorithm could for large corpora.
 
 
 Files provided:
-* onlineldavb.py: A package of functions for fitting LDA using stochastic
+* streamlda.py: A package of functions for fitting LDA using stochastic
     optimization.
-* onlinewikipedia.py: An example Python script that uses the functions in
-    onlineldavb.py to fit a set of topics to the documents in Wikipedia.
+* dirichlet_words.py: A class to represent the evolving vocabulary as
+    probability distributions over words and topics. Provides backoff estimates
+    of unseen words. 
+* streamwikipedia.py: An example Python script that uses the functions in
+    streamlda.py to fit a set of topics to the documents in Wikipedia.
 * wikirandom.py: A package of functions for downloading randomly chosen
-    Wikipedia articles.
+    Wikipedia articles. 
 * printtopics.py: A Python script that displays the topics fit using the
-    functions in onlineldavb.py.
-* dictnostops.txt: A vocabulary of English words with the stop words removed.
+    functions in streamlda.py.
+* documentation.txt: More detailed commentary and implementation details. 
 * readme.txt: This file.
-* COPYING: A copy of the GNU public license version 3.
+* LICENSE: A copy of the GNU public license version 3.
 
-You will need to have the numpy and scipy packages installed somewhere
-that Python can find them to use these scripts.
+
+Dependencies:
+* numpy 
+* scipy
+* nltk
 
 
 Example:
-python onlinewikipedia.py 101
-python printtopics.py dictnostops.txt lambda-100.dat
+python streamwikipedia.py 101
+python printtopics.py 
 
 This would run the algorithm for 101 iterations, and display the
 (expected value under the variational posterior of the) topics fit by
