@@ -4,6 +4,7 @@
 
 from streamlda import StreamLDA
 import random
+import numpy as n
 
 # start out with some small docs that have zero vocabulary overlap. also make
 # them somewhat intuitive so it's easier to read :)
@@ -19,33 +20,36 @@ kappa =  0.7
 slda = StreamLDA(num_topics, alpha, eta, tau0, kappa)
 
 num_runs = 100
+this_run = 0
 batchsize = 10
 
-while num_runs:
+while this_run < num_runs:
     print "Run #%d..." % num_runs
     batch_docs = [random.choice([doc1,doc2]) for i in xrange(batchsize)]
     (gamma, bound) = slda.update_lambda(batch_docs)
-    (wordids, wordcts) = slda.parse_new_docs(docset)
-    perwordbound = bound * len(docset) / (slda._D * sum(map(sum, wordcts)))
+    (wordids, wordcts) = slda.parse_new_docs(batch_docs)
+    perwordbound = bound * len(batch_docs) / (slda._D * sum(map(sum, wordcts)))
     print '%d:  rho_t = %f,  held-out perplexity estimate = %f' % \
-        (iteration, slda._rhot, numpy.exp(-perwordbound))
-    lambda_mat = self._lambda.as_matrix()
-    for k in num_topics:
+        (this_run, slda._rhot, n.exp(-perwordbound))
+    lambda_mat = slda._lambda.as_matrix()
+    for k in xrange(num_topics):
         # get the probabilities for this topic
-        lambdak = list(lambda_mat[l,:]) # a list of counts
-        id_to_words = self._lambda.indexes
+        lambdak = list(lambda_mat[k,:]) # a list of counts
+        id_to_words = slda._lambda.indexes
         # lambdak[i] is a probability. id_to_words[i] is the word associated
         # with index i
-        wordprobs = [(lambdak[i], id_to_words[i]) for i in len(lambdak)]
+        wordprobs = [(lambdak[i], id_to_words[i]) for i in xrange(len(lambdak))]
         # sort the probabilities (don't forget, sort() works in place). by
         # default, sort() will sort on the first item in each tuple. 
-        wordprobs.sort()
+        wordprobs.sort(reverse=True)
         # print them 
         # feel free to change the "53" here to whatever fits your screen nicely.
+        print 'Topic %d' % k
+        print '---------------------------'
         for i in range(0, 53):
-            print '%20s  \t---\t  %.4f' % (vocab[temp[i][1]], temp[i][0])
+            print '%20s  \t---\t  %.4f' % (wordprobs[i][1], wordprobs[i][0])
         print
  
-    num_runs -= 1
-
+    this_run += 1
+    raw_input("enter to continue")
 
