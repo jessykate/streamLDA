@@ -37,11 +37,7 @@ def dirichlet_expectation(alpha):
     For a vector theta ~ Dir(alpha), computes E[log(theta)] given alpha.
     Returns a W x K matrix. 
     """
-    print 'alpha:'
-    print alpha
-    print len(alpha)
-    # len(alpha) for an n.random.gamma obj is k, or num topics. 
-    if (len(alpha) == 1):
+    if (len(alpha.shape) == 1):
         return(psi(alpha) - psi(n.sum(alpha)))
     return(psi(alpha) - psi(n.sum(alpha, 1))[:, n.newaxis])
 
@@ -67,7 +63,6 @@ class StreamLDA:
         # sanity checks here
         if not isinstance(K, int):
             raise ParameterError
-
 
         # set the model-level parameters
         self._K = K
@@ -135,7 +130,9 @@ class StreamLDA:
             doc_counts = {}
             for word in words:
                 # index returns the unique index for word. if word has not been
-                # seen before, a new index is created. 
+                # seen before, a new index is created. We need to do this check
+                # on the existing lambda object so that word indices get
+                # preserved across runs. 
                 wordindex = self._lambda.index(word)
                 doc_counts[wordindex] = doc_counts.get(wordindex, 0) + 1
 
@@ -217,16 +214,36 @@ class StreamLDA:
             # statistics for the M step. Updates the statistics only for words
             # in ids list, with their respective counts in cts (also a list).
             # the multiplying factor from self._expElogbeta
-            # lambda_stats is basically phi multiplied by the word counts. the
-            # sum over documents shown in equation (5) happens as each document
-            # is iterated over. 
-            lambda_stats = n.outer(expElogthetad.T, cts/phinorm) * self._expElogbeta
-            for wordid, ct in zip(ids, cts):
-                for topic in self._K:
-                    # lambda_stats_wk = n_dw * phi_dwk
-                    stats_wk = lambda_stats[topic, word]
+            # lambda_stats is basically phi multiplied by the word counts, ie
+            # lambda_stats_wk = n_dw * phi_dwk
+            # the sum over documents shown in equation (5) happens as each
+            # document is iterated over. 
+            print 'shapes expElogthetad.T, cts, phinorm, expElogbetad'
+            print expElogthetad.T.shape
+            print len(cts)
+            print phinorm
+            print expElogbetad.shape            
+            print
+            # lambda stats is K x len(ids), while the actual word ids can be
+            # any integer, so we need a way to map word ids to their
+            # lambda_stats (ie we can't just index into the lambda_stats array
+            # using the wordid because it will be out of range). so we create
+            # lambda_data, which contains a list of 2-tuples of length len(ids). 
+            # the first tuple item contains the wordid, and the second contains
+            # a numpy array with the statistics for each topic, for that word.
+
+            lambda_stats = n.outer(expElogthetad.T, cts/phinorm) * expElogbetad
+            lambda_data = zip(ids, lambda_stats.T)
+            print 'shape lambda_stats = %s' % str(lambda_stats.shape)
+            # for idx in xrange(len(lambda_data)):
+            # word = , wordid = , cts = 
+            for wordid, stats in lambda_data:
+                word = self._lambda.indexes[wordid]
+                for topic in xrange(self._K):
+                    stats_wk = stats[topic]
                     print "updating new_lambda(%s, %d, %f)" % (word, topic, stats_wk)
-                    new_lambda.update_counts(word, topic, stats_wk)
+                    new_lambda.update_count(word, topic, stats_wk)
+                print "sum over stats for this word for all topics: %f" % sum(stats)
 
         return((gamma, new_lambda))
 
