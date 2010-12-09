@@ -360,10 +360,10 @@ class StreamLDA:
         score = score * self._D / len(docs)
 
         # E[log p(beta | eta) - log q (beta | lambda)]
-        score = score + n.sum((self._eta-self._lambda)*self._Elogbeta)
-        score = score + n.sum(gammaln(self._lambda) - gammaln(self._eta))
+        score = score + n.sum((self._eta-self._lambda.as_matrix())*self._Elogbeta)
+        score = score + n.sum(gammaln(self._lambda.as_matrix()) - gammaln(self._eta))
         score = score + n.sum(gammaln(self._eta*len(self._lambda)) - 
-                              gammaln(n.sum(self._lambda, 1)))
+                              gammaln(n.sum(self._lambda.as_matrix(), 1)))
 
         return(score)
         
