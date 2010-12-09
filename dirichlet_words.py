@@ -22,6 +22,7 @@
 
 from nltk import FreqDist
 import string, random
+import numpy as n
 
 CHAR_SMOOTHING = 1 / 10000.
 
@@ -47,6 +48,8 @@ class DirichletWords(object):
     self.num_topics = num_topics
     self._topics = [FreqDist() for x in xrange(num_topics)]
 
+    self.initialize_topics()
+
   def initialize_topics(self):
     ''' initializes the topics with some random seed words so that they have
         enough relative bias to actually evolve when new words are passed in.
@@ -60,11 +63,12 @@ class DirichletWords(object):
     # make a 100 random 'words' between length 3 and 9 (just 'cuz), and
     # add them to the topics. they'll never realistically be seen again, but
     # that shouldn't matter. 
+    print 'initializing topics with garbage...'
     for i in xrange(100):
         num = random.randint(3,9)
         word = r.read(num).translate(translate_table)
         topic_weights = probability_vector(self.num_topics)
-        for k in self.num_topics:
+        for k in xrange(self.num_topics):
             self.update_count(word, k, topic_weights[k])
     r.close()
 
@@ -83,11 +87,11 @@ class DirichletWords(object):
     # with. 
     num_words = len(self.indexes)
     # topics are the rows, and words are the columns. 
-    lambda_matrix = n.zeros(self.num_topics, num_words)
+    lambda_matrix = n.zeros((self.num_topics, num_words))
     for word_index, word in enumerate(self.indexes):
-        topic_weights = [self.topic_prob(k, word) for k in self.num_topics]
+        topic_weights = [self.topic_prob(k, word) for k in xrange(self.num_topics)]
         # topic weights for this word-- a column vector. 
-        lambda_matrix[:word_index] = topic_weights
+        lambda_matrix[:,word_index] = topic_weights
     return lambda_matrix
 
   def index(self, word):
@@ -157,7 +161,7 @@ class DirichletWords(object):
                         + rhot*otherlambda._words[word])\
                         * total_words
       # update topic counts
-      for topic in self.num_topics:
+      for topic in xrange(self.num_topics):
         self._topics[topic][word] = ((1-rhot)*self._topics[topic][word] \
                                     + rhot*otherlambda._topics[topic][word])\
                                     * topic_totals[topic]
