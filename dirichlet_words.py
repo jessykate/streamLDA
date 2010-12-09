@@ -37,6 +37,7 @@ class DirichletWords(object):
   def __init__(self, num_topics, alpha_topic = 1.0,
                alpha_word = 1.0, max_tables = 50000):
 
+    self.max_tables = max_tables
     self._alphabet = FreqDist()
     # store all words seen in a list so they are associated with a unique ID. 
     self.indexes = []
@@ -64,7 +65,7 @@ class DirichletWords(object):
     # add them to the topics. they'll never realistically be seen again, but
     # that shouldn't matter. 
     print 'initializing topics with garbage...'
-    for i in xrange(100):
+    for i in xrange(2*self.num_topics):
         num = random.randint(3,9)
         word = r.read(num).translate(translate_table)
         topic_weights = probability_vector(self.num_topics)
@@ -80,8 +81,8 @@ class DirichletWords(object):
         note that because we are using topic_prob(), this is equivalent to he
         expectation of log beta, ie Elogbeta '''
     
-    #  XXX TODO should we just store this on the fly instead of recomputing it
-    #  each batch?
+    #  XXX TODO we should store this on the fly instead of recomputing it
+    #  each batch
 
     # create a numpy array here because that's what the e_step expects to work
     # with. 
@@ -141,18 +142,25 @@ class DirichletWords(object):
   def merge(self, otherlambda, rhot):
     ''' fold the word probabilities of another DirichletWords object into this
         one. assumes self.num_topics is the same for both. '''
-    all_words = self.words() + otherlambda.words()
+    all_words = self._words.keys() + otherlambda._words.keys()
     distinct_words = list(set(all_words))
-
+    print '%d distinct words' % len(distinct_words)
+    print distinct_words
+    print
+    print 'lambda values before update'
+    print self._words.items()
+    print
+    print 'new lambda before merge'
+    print otherlambda._words.items()
     # combines the probabilities, with otherlambda weighted by rho, and
     # generates a new 'count' by combining the number of words in the old
     # (current) lambda with the number in the new. here we essentially take
     # the same steps as update_count but do so explicitly so we can weight the
     # terms appropriately. 
     total_words = self._words.N() + otherlambda._words.N()
-    topic_totals = [self._topics[i].N() + otherlambda._topics[i].N() for i in self.num_topics]
+    topic_totals = [self._topics[i].N() + otherlambda._topics[i].N() for i in xrange(self.num_topics)]
     total_chars = self._alphabet.N() + otherlambda._alphabet.N()
-    for word in distinctwords:
+    for word in distinct_words:
       if word not in self.indexes:
         self.indexes.append(word)
       # update word counts
@@ -170,6 +178,9 @@ class DirichletWords(object):
         self._alphabet[ii] = ((1-rhot)*self._alphabet[ii] \
                             + rhot*otherlambda._alphabet[ii])\
                             * total_chars
+    print 'after update'
+    print self._words.items()
+    raw_input("enter to continue...")
 
   def word_prob(self, word):
     return (self._words[word] + self.alpha_word * self.seq_prob(word)) / \
