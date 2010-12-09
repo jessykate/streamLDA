@@ -20,9 +20,16 @@ import sys, re, time, string
 import numpy as n
 from scipy.special import gammaln, psi
 from dirichlet_words import DirichletWords
+import time
 
 n.random.seed(100000001)
 meanchangethresh = 0.001
+
+class ParameterError(Exception):
+    def __init__(self, value):
+        self.value = value
+    def __str__(self):
+        return repr(self.value)
 
 def dirichlet_expectation(alpha):
     """
@@ -30,7 +37,9 @@ def dirichlet_expectation(alpha):
     For a vector theta ~ Dir(alpha), computes E[log(theta)] given alpha.
     Returns a W x K matrix. 
     """
-
+    print 'alpha:'
+    print alpha
+    print len(alpha)
     # len(alpha) for an n.random.gamma obj is k, or num topics. 
     if (len(alpha) == 1):
         return(psi(alpha) - psi(n.sum(alpha)))
@@ -55,6 +64,11 @@ class StreamLDA:
         set kappa=0 this class can also be used to do batch VB.
         """
 
+        # sanity checks here
+        if not isinstance(K, int):
+            raise ParameterError
+
+
         # set the model-level parameters
         self._K = K
         self._alpha = alpha
@@ -74,9 +88,8 @@ class StreamLDA:
         self._lambda = DirichletWords(self._K)
 
         # set the variational distribution q(beta|lambda). 
-        self._Elogbeta = self._lambda.as_matrix()
-        self._expElogbeta = n.exp(self._Elogbeta)
-
+        self._Elogbeta = self._lambda.as_matrix() # num_topics x num_words
+        self._expElogbeta = n.exp(self._Elogbeta) # num_topics x num_words
         
     def parse_new_docs(self, new_docs):
         """
@@ -161,22 +174,24 @@ class StreamLDA:
         Elogtheta = dirichlet_expectation(gamma) # D x K
         expElogtheta = n.exp(Elogtheta)
         
-        # instead of sstats create a new lambda
-        # sstats = n.zeros(self._lambda.shape())
-        new_lambda = DirichetWords(self._K)
+        # create a new_lambda to store the stats for this batch
+        new_lambda = DirichletWords(self._K)
 
         # Now, for each document d update that document's gamma and phi
         it = 0
         meanchange = 0
         for d in range(0, batchD):
-            print 'Batch document %d' % d
+            print 'Document %d in batch' % d
             # These are mostly just shorthand (but might help cache locality)
             ids = wordids[d]
             cts = wordcts[d]
             gammad = gamma[d, :]
             Elogthetad = Elogtheta[d, :] # K x 1
             expElogthetad = expElogtheta[d, :] # k x 1 for this D. 
-            expElogbetad = self._expElogbeta[:, ids] # k x len(new_docs)
+            print 'ids = %s' % str(ids)
+            # make sure exp/Elogbeta is initialized for all the needed indices. 
+            self.Elogbeta_sizecheck(ids)
+            expElogbetad = self._expElogbeta[:, ids] # dims(expElogbetad) = k x len(doc_vocab)
             # The optimal phi_{dwk} is proportional to 
             # expElogthetad_k * expElogbetad_w. phinorm is the normalizer.
             phinorm = n.dot(expElogthetad, expElogbetad) + 1e-100
@@ -210,6 +225,7 @@ class StreamLDA:
                 for topic in self._K:
                     # lambda_stats_wk = n_dw * phi_dwk
                     stats_wk = lambda_stats[topic, word]
+                    print "updating new_lambda(%s, %d, %f)" % (word, topic, stats_wk)
                     new_lambda.update_counts(word, topic, stats_wk)
 
         return((gamma, new_lambda))
@@ -256,6 +272,29 @@ class StreamLDA:
         self._batches_to_date += 1
 
         return(gamma, bound)
+
+    def Elogbeta_sizecheck(self, ids):
+        ''' Elogbeta is initialized with small random values. In an offline LDA
+        setting, if a word has never been seen, even after n iterations, its value in
+        Elogbeta would remain at this small random value. However, in offline LDA,
+        the size of expElogbeta in the words dimension is always <= the number
+        of distinct words in some new document. In stream LDA, this is not
+        necessarily the case. So we still make sure to use the previous
+        iteration's values of Elogbeta, but where a new word appears, we need
+        to seed it. That is done here.  '''
+        
+        # since ids are added sequentially, then the appearance of some id = x
+        # in the ids list guarantees that every ID from 0...x-1 also exists.
+        # thus, we can take the max value of ids and extend Elogbeta to that
+        # size. 
+        new_columns = max(ids)+ 1
+        old_columns = self._Elogbeta.shape[1]
+        self._Elogbeta = n.resize(self._Elogbeta, (self._K, new_columns))
+        # fill the new columns with appropriately small random numbers
+        newdata = n.random.random((self._K, new_columns-old_columns))
+        newcols = range(old_columns, new_columns)
+        self._Elogbeta[:,newcols] = newdata
+        self._expElogbeta = n.exp(self._Elogbeta)
 
     def approx_bound(self, docs, gamma):
         """
