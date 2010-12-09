@@ -64,7 +64,6 @@ class DirichletWords(object):
     # make a 100 random 'words' between length 3 and 9 (just 'cuz), and
     # add them to the topics. they'll never realistically be seen again, but
     # that shouldn't matter. 
-    print 'initializing topics with garbage...'
     for i in xrange(2*self.num_topics):
         num = random.randint(3,9)
         word = r.read(num).translate(translate_table)
@@ -144,43 +143,56 @@ class DirichletWords(object):
         one. assumes self.num_topics is the same for both. '''
     all_words = self._words.keys() + otherlambda._words.keys()
     distinct_words = list(set(all_words))
-    print '%d distinct words' % len(distinct_words)
-    print distinct_words
-    print
-    print 'lambda values before update'
-    print self._words.items()
-    print
-    print 'new lambda before merge'
-    print otherlambda._words.items()
+
+#    print
+#    print '%d distinct words between current and new lambda:' % len(distinct_words)
+#    print distinct_words
+#    print
+#    print 'current lambda before merge'
+#    print self._words.items()
+#    print
+#    print 'new lambda before merge'
+#    print otherlambda._words.items()
+
     # combines the probabilities, with otherlambda weighted by rho, and
     # generates a new 'count' by combining the number of words in the old
     # (current) lambda with the number in the new. here we essentially take
     # the same steps as update_count but do so explicitly so we can weight the
     # terms appropriately. 
     total_words = self._words.N() + otherlambda._words.N()
+    #print '\nthere are %d total words observations' % total_words
+    #print
     topic_totals = [self._topics[i].N() + otherlambda._topics[i].N() for i in xrange(self.num_topics)]
     total_chars = self._alphabet.N() + otherlambda._alphabet.N()
     for word in distinct_words:
       if word not in self.indexes:
         self.indexes.append(word)
       # update word counts
-      # XXX should we be summing word_prob() or _words[word] values?
-      self._words[word] = ((1-rhot)*self._words[word] \
-                        + rhot*otherlambda._words[word])\
+      #print 'word frequencies for %s' % word
+      #print self._words[word]
+      #print otherlambda._words[word]
+      #print rhot
+
+      # XXX this should either sum over word_prob(word) and then multiply by
+      # total_words, or just sum the counts directly without multiplying by
+      # total_words. 
+      self._words[word] = ((1-rhot)*self.word_prob(word) \
+                        + rhot*otherlambda.word_prob(word))\
                         * total_words
       # update topic counts
       for topic in xrange(self.num_topics):
-        self._topics[topic][word] = ((1-rhot)*self._topics[topic][word] \
-                                    + rhot*otherlambda._topics[topic][word])\
+        self._topics[topic][word] = ((1-rhot)*self.topic_prob(topic,word) \
+                                    + rhot*otherlambda.topic_prob(topic,word))\
                                     * topic_totals[topic]
       # update sequence counts
       for ii in word:
-        self._alphabet[ii] = ((1-rhot)*self._alphabet[ii] \
-                            + rhot*otherlambda._alphabet[ii])\
+        self._alphabet[ii] = ((1-rhot)*self.seq_prob(ii) \
+                            + rhot*otherlambda.seq_prob(ii))\
                             * total_chars
-    print 'after update'
-    print self._words.items()
-    raw_input("enter to continue...")
+    #print 'after update'
+    #print self._words.items()
+    
+    #raw_input("enter to continue...")
 
   def word_prob(self, word):
     return (self._words[word] + self.alpha_word * self.seq_prob(word)) / \
