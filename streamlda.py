@@ -304,14 +304,15 @@ class StreamLDA:
         # in the ids list guarantees that every ID from 0...x-1 also exists.
         # thus, we can take the max value of ids and extend Elogbeta to that
         # size. 
-        new_columns = max(ids)+ 1
-        old_columns = self._Elogbeta.shape[1]
-        self._Elogbeta = n.resize(self._Elogbeta, (self._K, new_columns))
-        # fill the new columns with appropriately small random numbers
-        newdata = n.random.random((self._K, new_columns-old_columns))
-        newcols = range(old_columns, new_columns)
-        self._Elogbeta[:,newcols] = newdata
-        self._expElogbeta = n.exp(self._Elogbeta)
+        columns_needed = max(ids)+ 1
+        current_columns = self._Elogbeta.shape[1]
+        if columns_needed > current_columns:
+            self._Elogbeta = n.resize(self._Elogbeta, (self._K, columns_needed))
+            # fill the new columns with appropriately small random numbers
+            newdata = n.random.random((self._K, columns_needed-current_columns))
+            newcols = range(current_columns, columns_needed)
+            self._Elogbeta[:,newcols] = newdata
+            self._expElogbeta = n.exp(self._Elogbeta)
 
     def approx_bound(self, docs, gamma):
         """
