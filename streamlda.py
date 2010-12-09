@@ -115,11 +115,11 @@ class StreamLDA:
         D = len(new_docs)
         # increment the count of total docs seen over all batches. 
         self._D += D
+        print 'parsing %d documents...' % D
 
         wordids = list()
         wordcts = list()
         for d in range(0, D):
-            print 'parsing document %d...' % d
             # remove non-alpha characters, normalize case and tokenize on
             # spaces
             new_docs[d] = new_docs[d].lower()
@@ -178,14 +178,13 @@ class StreamLDA:
         it = 0
         meanchange = 0
         for d in range(0, batchD):
-            print 'Document %d in batch' % d
+            print 'Updating gamma and phi for document %d in batch' % d
             # These are mostly just shorthand (but might help cache locality)
             ids = wordids[d]
             cts = wordcts[d]
             gammad = gamma[d, :]
             Elogthetad = Elogtheta[d, :] # K x 1
             expElogthetad = expElogtheta[d, :] # k x 1 for this D. 
-            print 'ids = %s' % str(ids)
             # make sure exp/Elogbeta is initialized for all the needed indices. 
             self.Elogbeta_sizecheck(ids)
             expElogbetad = self._expElogbeta[:, ids] # dims(expElogbetad) = k x len(doc_vocab)
@@ -218,12 +217,14 @@ class StreamLDA:
             # lambda_stats_wk = n_dw * phi_dwk
             # the sum over documents shown in equation (5) happens as each
             # document is iterated over. 
-            print 'shapes expElogthetad.T, cts, phinorm, expElogbetad'
-            print expElogthetad.T.shape
-            print len(cts)
-            print phinorm
-            print expElogbetad.shape            
-            print
+
+#            print 'shapes expElogthetad.T, cts, phinorm, expElogbetad'
+#            print expElogthetad.T.shape
+#            print len(cts)
+#            print phinorm
+#            print expElogbetad.shape            
+#            print
+
             # lambda stats is K x len(ids), while the actual word ids can be
             # any integer, so we need a way to map word ids to their
             # lambda_stats (ie we can't just index into the lambda_stats array
@@ -234,16 +235,14 @@ class StreamLDA:
 
             lambda_stats = n.outer(expElogthetad.T, cts/phinorm) * expElogbetad
             lambda_data = zip(ids, lambda_stats.T)
-            print 'shape lambda_stats = %s' % str(lambda_stats.shape)
-            # for idx in xrange(len(lambda_data)):
-            # word = , wordid = , cts = 
+#            print 'shape lambda_stats = %s' % str(lambda_stats.shape)
             for wordid, stats in lambda_data:
                 word = self._lambda.indexes[wordid]
                 for topic in xrange(self._K):
                     stats_wk = stats[topic]
-                    print "updating new_lambda(%s, %d, %f)" % (word, topic, stats_wk)
+#                    print "updating new_lambda(%s, %d, %f)" % (word, topic, stats_wk)
                     new_lambda.update_count(word, topic, stats_wk)
-                print "sum over stats for this word for all topics: %f" % sum(stats)
+#                print "sum over stats for this word for all topics: %f" % sum(stats)
 
         return((gamma, new_lambda))
 
