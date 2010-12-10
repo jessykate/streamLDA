@@ -34,8 +34,8 @@ def probability_vector(dims):
 
 class DirichletWords(object):
 
-  def __init__(self, num_topics, alpha_topic = 1.0,
-               alpha_word = 1.0, max_tables = 50000):
+  def __init__(self, num_topics, alpha_topic = 1.0, alpha_word = 1.0, 
+                max_tables = 50000, sanity_check=False):
 
     self.max_tables = max_tables
     self._alphabet = FreqDist()
@@ -49,22 +49,37 @@ class DirichletWords(object):
     self.num_topics = num_topics
     self._topics = [FreqDist() for x in xrange(num_topics)]
 
-    self.initialize_topics()
+    # the sanity_check flag is for testing only. 
+    if sanity_check == True:
+        self.deterministic_seed()
+    else:
+        self.initialize_topics()
+
+  def deterministic_seed(self):
+    ''' if sanity_check = True, this will seed the topics with enough variance
+    to evolve but do so in the most basic and deterministic way possible, so a
+    user can follow along each step of the algorithm'''
+
+    chars = "abcdefghijklmnopqrstuvwxyz"
+    for i in xrange(self.num_topics):
+        idx = i % len(chars)
+        topic_weights = [0]*self.num_topics # testing
+        topic_weights[i] = 1.0 #testing
+        for k in xrange(self.num_topics):
+            self.update_count(chars[idx], k, topic_weights[k])
 
   def initialize_topics(self):
     ''' initializes the topics with some random seed words so that they have
-        enough relative bias to actually evolve when new words are passed in.
-    '''
+        enough relative bias to evolve when new words are passed in.  '''
     # we are going to create some random string from /dev/urandom. to convert
     # them to a string, we need a translation table that is 256 characters. 
     translate_table = (string.letters*5)[:256]
     # /dev/urandom is technically not as random as /dev/random, but it doesn't
     # block. 
     r = open('/dev/urandom')
-    # make a 100 random 'words' between length 3 and 9 (just 'cuz), and
-    # add them to the topics. they'll never realistically be seen again, but
-    # that shouldn't matter. 
-    for i in xrange(2*self.num_topics):
+    # make random 'words' between length 3 and 9 (just 'cuz), and add them to
+    # the topics. they'll never realistically be seen again, but that's ok.
+    for i in xrange(self.num_topics):
         num = random.randint(3,9)
         word = r.read(num).translate(translate_table)
         topic_weights = probability_vector(self.num_topics)
@@ -81,12 +96,11 @@ class DirichletWords(object):
         expectation of log beta, ie Elogbeta '''
     
     #  XXX TODO we should store this on the fly instead of recomputing it
-    #  each batch
+    #  all the time!
 
-    # create a numpy array here because that's what the e_step expects to work
-    # with. 
+    # create a numpy array here because that's what the e_step in streamLDA
+    # expects 
     num_words = len(self.indexes)
-    # topics are the rows, and words are the columns. 
     lambda_matrix = n.zeros((self.num_topics, num_words))
     for word_index, word in enumerate(self.indexes):
         topic_weights = [self.topic_prob(k, word) for k in xrange(self.num_topics)]
@@ -144,15 +158,15 @@ class DirichletWords(object):
     all_words = self._words.keys() + otherlambda._words.keys()
     distinct_words = list(set(all_words))
 
-#    print
-#    print '%d distinct words between current and new lambda:' % len(distinct_words)
-#    print distinct_words
-#    print
-#    print 'current lambda before merge'
-#    print self._words.items()
-#    print
-#    print 'new lambda before merge'
-#    print otherlambda._words.items()
+    print
+    print '%d distinct words between current and new lambda:' % len(distinct_words)
+    print distinct_words
+    print
+    print 'current lambda before merge'
+    print self._words.items()
+    print
+    print 'new lambda before merge'
+    print otherlambda._words.items()
 
     # combines the probabilities, with otherlambda weighted by rho, and
     # generates a new 'count' by combining the number of words in the old
@@ -168,10 +182,8 @@ class DirichletWords(object):
       if word not in self.indexes:
         self.indexes.append(word)
       # update word counts
-      #print 'word frequencies for %s' % word
-      #print self._words[word]
-      #print otherlambda._words[word]
-      #print rhot
+      print ("word frequencies for %s: current: %f other: %f. weighting: %f" 
+            % (word, self._words[word], otherlambda._words[word], rhot))
 
       # XXX this should either sum over word_prob(word) and then multiply by
       # total_words, or just sum the counts directly without multiplying by
@@ -189,10 +201,10 @@ class DirichletWords(object):
         self._alphabet[ii] = ((1-rhot)*self.seq_prob(ii) \
                             + rhot*otherlambda.seq_prob(ii))\
                             * total_chars
-    #print 'after update'
-    #print self._words.items()
+    print 'after update'
+    print self._words.items()
     
-    #raw_input("enter to continue...")
+    raw_input("enter to continue...")
 
   def word_prob(self, word):
     return (self._words[word] + self.alpha_word * self.seq_prob(word)) / \
