@@ -58,7 +58,7 @@ def main():
         # distributions over topic weights for the articles analyzed in
         # the last iteration.
         if (iteration % 10 == 0):
-            numpy.savetxt('lambda-%d.dat' % iteration, slda._lambda)
+            numpy.savetxt('lambda-%d.dat' % iteration, slda._lambda.as_matrix())
             numpy.savetxt('gamma-%d.dat' % iteration, gamma)
 
 if __name__ == '__main__':
