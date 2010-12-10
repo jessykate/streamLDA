@@ -46,7 +46,7 @@ class StreamLDA:
     Implements stream-based LDA as an extension to online Variational Bayes for
     LDA, as described in (Hoffman et al. 2010).  """
 
-    def __init__(self, K, alpha, eta, tau0, kappa):
+    def __init__(self, K, alpha, eta, tau0, kappa, sanity_check=False):
         """
         Arguments:
         K: Number of topics
@@ -60,7 +60,6 @@ class StreamLDA:
         set kappa=0 this class can also be used to do batch VB.
         """
 
-        # sanity checks here
         if not isinstance(K, int):
             raise ParameterError
 
@@ -70,7 +69,7 @@ class StreamLDA:
         self._eta = eta
         self._tau0 = tau0 + 1
         self._kappa = kappa
-
+        self.sanity_check = sanity_check
         # number of documents seen *so far*. Updated each time a new batch is
         # submitted. 
         self._D = 0
@@ -80,7 +79,7 @@ class StreamLDA:
 
         # Initialize lambda as a DirichletWords object which has a non-zero
         # probability for any character sequence, even those unseen. 
-        self._lambda = DirichletWords(self._K)
+        self._lambda = DirichletWords(self._K, sanity_check=self.sanity_check)
 
         # set the variational distribution q(beta|lambda). 
         self._Elogbeta = self._lambda.as_matrix() # num_topics x num_words
@@ -172,7 +171,7 @@ class StreamLDA:
         expElogtheta = n.exp(Elogtheta)
         
         # create a new_lambda to store the stats for this batch
-        new_lambda = DirichletWords(self._K)
+        new_lambda = DirichletWords(self._K, sanity_check=self.sanity_check)
 
         # Now, for each document d update that document's gamma and phi
         it = 0
