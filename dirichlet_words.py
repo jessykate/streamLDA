@@ -61,12 +61,11 @@ class DirichletWords(object):
     user can follow along each step of the algorithm'''
 
     chars = "abcdefghijklmnopqrstuvwxyz"
-    for i in xrange(self.num_topics):
-        idx = i % len(chars)
-        topic_weights = [0]*self.num_topics # testing
-        topic_weights[i] = 1.0 #testing
-        for k in xrange(self.num_topics):
-            self.update_count(chars[idx], k, topic_weights[k])
+    for i in xrange(3):
+      word = random.choice(chars)
+      topic_weights = probability_vector(self.num_topics)
+      for k in xrange(self.num_topics):
+        self.update_count(word, k, topic_weights[k])
 
   def initialize_topics(self):
     ''' initializes the topics with some random seed words so that they have
@@ -77,11 +76,12 @@ class DirichletWords(object):
     # /dev/urandom is technically not as random as /dev/random, but it doesn't
     # block. 
     r = open('/dev/urandom')
-    # make random 'words' between length 3 and 9 (just 'cuz), and add them to
-    # the topics. they'll never realistically be seen again, but that's ok.
+    # make random 'words' and add them to the topics. they'll never
+    # realistically be seen again- which is good since we just want them to
+    # seed the bias in the topics. 
     for i in xrange(self.num_topics):
-        num = random.randint(3,9)
-        word = r.read(num).translate(translate_table)
+        word_length = random.randint(9,20)
+        word = r.read(word_length).translate(translate_table)
         topic_weights = probability_vector(self.num_topics)
         for k in xrange(self.num_topics):
             self.update_count(word, k, topic_weights[k])
@@ -153,13 +153,14 @@ class DirichletWords(object):
     return val
 
   def merge(self, otherlambda, rhot):
-    ''' fold the word probabilities of another DirichletWords object into this
-        one. assumes self.num_topics is the same for both. '''
+    ''' fold the word counts in another DirichletWords object into this
+        one, weighted by rhot. assumes self.num_topics is the same for both
+        objects. '''
+    
     all_words = self._words.keys() + otherlambda._words.keys()
     distinct_words = list(set(all_words))
 
-    print
-    print '%d distinct words between current and new lambda:' % len(distinct_words)
+    print '\n%d distinct words between current and new lambda:' % len(distinct_words)
     print distinct_words
     print
     print 'current lambda before merge'
@@ -167,42 +168,45 @@ class DirichletWords(object):
     print
     print 'new lambda before merge'
     print otherlambda._words.items()
+    print
 
     # combines the probabilities, with otherlambda weighted by rho, and
-    # generates a new 'count' by combining the number of words in the old
+    # generates a new count by combining the number of words in the old
     # (current) lambda with the number in the new. here we essentially take
     # the same steps as update_count but do so explicitly so we can weight the
     # terms appropriately. 
     total_words = self._words.N() + otherlambda._words.N()
-    #print '\nthere are %d total words observations' % total_words
-    #print
-    topic_totals = [self._topics[i].N() + otherlambda._topics[i].N() for i in xrange(self.num_topics)]
-    total_chars = self._alphabet.N() + otherlambda._alphabet.N()
+    print 'old lambda words: %d' % self._words.N()
+    print 'new lambda words: %d' % otherlambda._words.N()
+    print 'total number of words: %d' % total_words
+
+    self_scale = (1-rhot)*total_words/float(self._words.N())
+    other_scale = rhot*total_words/float(otherlambda._words.N())
+
     for word in distinct_words:
-      if word not in self.indexes:
-        self.indexes.append(word)
-      # update word counts
       print ("word frequencies for %s: current: %f other: %f. weighting: %f" 
             % (word, self._words[word], otherlambda._words[word], rhot))
 
-      # XXX this should either sum over word_prob(word) and then multiply by
-      # total_words, or just sum the counts directly without multiplying by
-      # total_words. 
-      self._words[word] = ((1-rhot)*self.word_prob(word) \
-                        + rhot*otherlambda.word_prob(word))\
-                        * total_words
+      if word not in self.indexes:
+        self.indexes.append(word)
+        
+      # updae word counts
+      self._words[word] = (self_scale*self._words[word] 
+                        + other_scale*otherlambda._words[word])
+      
       # update topic counts
       for topic in xrange(self.num_topics):
-        self._topics[topic][word] = ((1-rhot)*self.topic_prob(topic,word) \
-                                    + rhot*otherlambda.topic_prob(topic,word))\
-                                    * topic_totals[topic]
+        self._topics[topic][word] = (self_scale*self._topics[topic][word] 
+                                    + other_scale*otherlambda._topics[topic][word])
+         
       # update sequence counts
       for ii in word:
-        self._alphabet[ii] = ((1-rhot)*self.seq_prob(ii) \
-                            + rhot*otherlambda.seq_prob(ii))\
-                            * total_chars
+        self._alphabet[ii] = (self_scale*self._alphabet[ii] 
+                            + other_scale*otherlambda._alphabet[ii])
+
     print 'after update'
     print self._words.items()
+    print 'new total number of words: %d' % self._words.N()
     
     raw_input("enter to continue...")
 
@@ -215,21 +219,21 @@ class DirichletWords(object):
             self.alpha_topic * self.word_prob(word)) / \
             (self._topics[topic].N() + self.alpha_topic)
 
-  def update_count(self, word, topic, freq):
+  def update_count(self, word, topic, count):
     # create an index for the word
     if word not in self.indexes:
       self.indexes.append(word)
     # increment the frequency of the word in the specified topic
-    self._topics[topic][word] += freq
+    self._topics[topic][word] += count
     # also keep a separate frequency count of the number of times this word has
     # appeared, across all documents. 
-    self._words[word] += freq
-    # finally, keep track of the frequency of appearance for each character.
+    self._words[word] += count
+    # finally, keep track of the appearance of each character.
     # note that this does not assume any particular character set nor limit
     # recognized characters. if words contain punctuation, etc. then they will
     # be counted here. 
     for ii in word:
-      self._alphabet[ii] += freq
+      self._alphabet[ii] += count
 
   def print_probs(self, word):
     print "----------------"
