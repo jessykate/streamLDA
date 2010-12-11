@@ -40,7 +40,7 @@ doc2 = "space exploration space exploration space exploration space exploration"
 num_topics = 2
 alpha =1.0/num_topics
 eta = 1.0/num_topics
-tau0 = 1024
+tau0 = 1
 kappa =  0.7
 slda = StreamLDA(num_topics, alpha, eta, tau0, kappa, sanity_check=True)
 
