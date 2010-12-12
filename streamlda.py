@@ -332,7 +332,7 @@ class StreamLDA:
             self._Elogbeta[:,newcols] = newdata
             self._expElogbeta = n.exp(self._Elogbeta)
 
-    def approx_bound(self, docs, gamma):
+    def approx_bound(self, gamma):
         """
         Estimates the variational bound over *all documents* using only
         the documents passed in as "docs." gamma is the set of parameters
@@ -342,18 +342,9 @@ class StreamLDA:
         The output of this function is going to be noisy, but can be
         useful for assessing convergence.
         """
-
-        # This is to handle the case where someone just hands us a single
-        # document, not in a list.
-        if (type(docs).__name__ == 'string'):
-            temp = list()
-            temp.append(docs)
-            docs = temp
-
         wordids = self.recentbatch['wordids']
         wordcts = self.recentbatch['wordcts']
-        #(wordids, wordcts) = self.parse_new_docs(docs)
-        batchD = len(docs)
+        batchD = len(wordids)
 
         score = 0
         Elogtheta = dirichlet_expectation(gamma)
@@ -377,7 +368,7 @@ class StreamLDA:
         score += sum(gammaln(self._alpha*self._K) - gammaln(n.sum(gamma, 1)))
 
         # Compensate for the subsampling of the population of documents
-        score = score * self._D / len(docs)
+        score = score * self._D / batchD
 
         # E[log p(beta | eta) - log q (beta | lambda)]
         score = score + n.sum((self._eta-self._lambda.as_matrix())*self._Elogbeta)
