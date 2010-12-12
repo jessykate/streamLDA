@@ -281,7 +281,7 @@ class StreamLDA:
         # we need to update lambda.
         (gamma, new_lambda) = self.do_e_step(docs)
         # Estimate held-out likelihood for current values of lambda.
-        bound = self.approx_bound(docs, gamma)
+        bound = self.approx_bound(gamma)
         # Update lambda based on documents.
         self._lambda.merge(new_lambda, rhot)
         # update the value of lambda_mat so that it also reflect the changes we
