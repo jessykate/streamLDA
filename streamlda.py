@@ -21,6 +21,7 @@ import numpy as n
 from scipy.special import gammaln, psi
 from dirichlet_words import DirichletWords
 import time
+from nltk.corpus import stopwords
 
 n.random.seed(100000001)
 meanchangethresh = 0.001
@@ -77,12 +78,17 @@ class StreamLDA:
         # number of batches processed so far. 
         self._batches_to_date = 0
 
+        # cache the wordids and wordcts for the most recent batch so they don't
+        # have to be recalculated when computing perplexity
+        self.recentbatch = {'wordids': None, 'wordcts': None}
+
         # Initialize lambda as a DirichletWords object which has a non-zero
         # probability for any character sequence, even those unseen. 
-        self._lambda = DirichletWords(self._K, sanity_check=self.sanity_check)
+        self._lambda = DirichletWords(self._K, sanity_check=self.sanity_check, initialize=True)
+        self._lambda_mat = self._lambda.as_matrix()
 
         # set the variational distribution q(beta|lambda). 
-        self._Elogbeta = self._lambda.as_matrix() # num_topics x num_words
+        self._Elogbeta = self._lambda_mat # num_topics x num_words
         self._expElogbeta = n.exp(self._Elogbeta) # num_topics x num_words
         
     def parse_new_docs(self, new_docs):
@@ -112,8 +118,6 @@ class StreamLDA:
             new_docs = [new_docs,]
             
         D = len(new_docs)
-        # increment the count of total docs seen over all batches. 
-        self._D += D
         print 'parsing %d documents...' % D
 
         wordids = list()
@@ -128,6 +132,9 @@ class StreamLDA:
             words = string.split(new_docs[d])
             doc_counts = {}
             for word in words:
+                # skip stopwords 
+                if word in stopwords.words('english'):
+                    continue
                 # index returns the unique index for word. if word has not been
                 # seen before, a new index is created. We need to do this check
                 # on the existing lambda object so that word indices get
@@ -135,12 +142,22 @@ class StreamLDA:
                 wordindex = self._lambda.index(word)
                 doc_counts[wordindex] = doc_counts.get(wordindex, 0) + 1
 
+            # if the document was empty, skip it. 
+            if len(doc_counts) == 0:
+                continue
+
             # wordids contains the ids of words seen in this batch, broken down
             # as one list of words per document in the batch. 
             wordids.append(doc_counts.keys())
             # wordcts contains counts of those same words, again per document. 
             wordcts.append(doc_counts.values())
-        
+            # Increment the count of total docs seen over all batches. 
+            self._D += 1
+       
+        # cache these values so they don't need to be recomputed. 
+        self.recentbatch['wordids'] = wordids
+        self.recentbatch['wordcts'] = wordcts
+
         return((wordids, wordcts))
 
     def do_e_step(self, docs):
@@ -162,14 +179,17 @@ class StreamLDA:
         if type(docs) == str: docs = [docs,]
        
         (wordids, wordcts) = self.parse_new_docs(docs)
-        batchD = len(docs)
+        # don't use len(docs) here because if we encounter any empty documents,
+        # they'll be skipped in the parse step above, and then batchD will be
+        # longer than wordids list. 
+        batchD = len(wordids)
 
         # Initialize the variational distribution q(theta|gamma) for
         # the mini-batch
         gamma = 1*n.random.gamma(100., 1./100., (batchD, self._K)) # batchD x K
         Elogtheta = dirichlet_expectation(gamma) # D x K
         expElogtheta = n.exp(Elogtheta)
-        
+
         # create a new_lambda to store the stats for this batch
         new_lambda = DirichletWords(self._K, sanity_check=self.sanity_check)
 
@@ -217,13 +237,6 @@ class StreamLDA:
             # the sum over documents shown in equation (5) happens as each
             # document is iterated over. 
 
-#            print 'shapes expElogthetad.T, cts, phinorm, expElogbetad'
-#            print expElogthetad.T.shape
-#            print len(cts)
-#            print phinorm
-#            print expElogbetad.shape            
-#            print
-
             # lambda stats is K x len(ids), while the actual word ids can be
             # any integer, so we need a way to map word ids to their
             # lambda_stats (ie we can't just index into the lambda_stats array
@@ -234,14 +247,11 @@ class StreamLDA:
 
             lambda_stats = n.outer(expElogthetad.T, cts/phinorm) * expElogbetad
             lambda_data = zip(ids, lambda_stats.T)
-#            print 'shape lambda_stats = %s' % str(lambda_stats.shape)
             for wordid, stats in lambda_data:
                 word = self._lambda.indexes[wordid]
                 for topic in xrange(self._K):
                     stats_wk = stats[topic]
-#                    print "updating new_lambda(%s, %d, %f)" % (word, topic, stats_wk)
                     new_lambda.update_count(word, topic, stats_wk)
-#                print "sum over stats for this word for all topics: %f" % sum(stats)
 
         return((gamma, new_lambda))
 
@@ -274,6 +284,9 @@ class StreamLDA:
         bound = self.approx_bound(docs, gamma)
         # Update lambda based on documents.
         self._lambda.merge(new_lambda, rhot)
+        # update the value of lambda_mat so that it also reflect the changes we
+        # just made. 
+        self._lambda_mat = self._lambda.as_matrix()
         
         # do some housekeeping - is lambda getting too big?
         oversize_by = len(self._lambda._words) - self._lambda.max_tables
@@ -282,8 +295,15 @@ class StreamLDA:
             self._lambda.forget(percent_to_forget)
 
         # update expected values of log beta from our lambda object
-        self._Elogbeta = self._lambda.as_matrix()
+        self._Elogbeta = self._lambda_mat
+#        print 'self lambda mat'
+#        print self._lambda_mat
+#        print 'self._Elogbeta from lambda_mat after merging'
+#        print self._Elogbeta
         self._expElogbeta = n.exp(self._Elogbeta)
+#        print 'and self._expElogbeta'
+        self._expElogbeta
+#        raw_input()
         self._batches_to_date += 1
 
         return(gamma, bound)
@@ -330,7 +350,9 @@ class StreamLDA:
             temp.append(docs)
             docs = temp
 
-        (wordids, wordcts) = self.parse_new_docs(docs)
+        wordids = self.recentbatch['wordids']
+        wordcts = self.recentbatch['wordcts']
+        #(wordids, wordcts) = self.parse_new_docs(docs)
         batchD = len(docs)
 
         score = 0
@@ -359,9 +381,9 @@ class StreamLDA:
 
         # E[log p(beta | eta) - log q (beta | lambda)]
         score = score + n.sum((self._eta-self._lambda.as_matrix())*self._Elogbeta)
-        score = score + n.sum(gammaln(self._lambda.as_matrix()) - gammaln(self._eta))
+        score = score + n.sum(gammaln(self._lambda_mat) - gammaln(self._eta))
         score = score + n.sum(gammaln(self._eta*len(self._lambda)) - 
-                              gammaln(n.sum(self._lambda.as_matrix(), 1)))
+                              gammaln(n.sum(self._lambda_mat, 1)))
 
         return(score)
-        
+
