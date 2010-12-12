@@ -149,7 +149,6 @@ class DirichletWords(object):
 
     # Normalize
     val /= 2**(len(word))
-    
     return val
 
   def merge(self, otherlambda, rhot):
@@ -160,37 +159,22 @@ class DirichletWords(object):
     all_words = self._words.keys() + otherlambda._words.keys()
     distinct_words = list(set(all_words))
 
-    print '\n%d distinct words between current and new lambda:' % len(distinct_words)
-    print distinct_words
-    print
-    print 'current lambda before merge'
-    print self._words.items()
-    print
-    print 'new lambda before merge'
-    print otherlambda._words.items()
-    print
-
     # combines the probabilities, with otherlambda weighted by rho, and
     # generates a new count by combining the number of words in the old
     # (current) lambda with the number in the new. here we essentially take
     # the same steps as update_count but do so explicitly so we can weight the
     # terms appropriately. 
     total_words = self._words.N() + otherlambda._words.N()
-    print 'old lambda words: %d' % self._words.N()
-    print 'new lambda words: %d' % otherlambda._words.N()
-    print 'total number of words: %d' % total_words
 
-    self_scale = (1-rhot)*total_words/float(self._words.N())
+    self_scale = (1.0-rhot)*total_words/float(self._words.N())
     other_scale = rhot*total_words/float(otherlambda._words.N())
 
     for word in distinct_words:
-      print ("word frequencies for %s: current: %f other: %f. weighting: %f" 
-            % (word, self._words[word], otherlambda._words[word], rhot))
 
       if word not in self.indexes:
         self.indexes.append(word)
         
-      # updae word counts
+      # update word counts
       self._words[word] = (self_scale*self._words[word] 
                         + other_scale*otherlambda._words[word])
       
