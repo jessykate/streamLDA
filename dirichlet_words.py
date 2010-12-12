@@ -35,7 +35,7 @@ def probability_vector(dims):
 class DirichletWords(object):
 
   def __init__(self, num_topics, alpha_topic = 1.0, alpha_word = 1.0, 
-                max_tables = 50000, sanity_check=False):
+                max_tables = 50000, sanity_check=False, initialize=False):
 
     self.max_tables = max_tables
     self._alphabet = FreqDist()
@@ -50,9 +50,9 @@ class DirichletWords(object):
     self._topics = [FreqDist() for x in xrange(num_topics)]
 
     # the sanity_check flag is for testing only. 
-    if sanity_check == True:
+    if initialize and sanity_check == True:
         self.deterministic_seed()
-    else:
+    elif initialize:
         self.initialize_topics()
 
   def deterministic_seed(self):
