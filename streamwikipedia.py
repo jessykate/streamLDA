@@ -22,6 +22,7 @@ import cPickle, string, numpy, getopt, sys, random, time, re, pprint
 
 import streamlda
 import wikirandom
+from util import print_topics
 
 def main():
     """
@@ -32,34 +33,34 @@ def main():
     # The number of documents to analyze each iteration
     batchsize = 10 #64
     # The number of topics
-    K = 100
+    K = 10
 
     if (len(sys.argv) < 2):        
-        runs = 5 
+        runs = 50
     else:
         runs = int(sys.argv[1])        
 
     # Initialize the algorithm with alpha=1/K, eta=1/K, tau_0=1024, kappa=0.7
-    slda = streamlda.StreamLDA(K, 1./K, 1./K, 1024., 0.7)
+    slda = streamlda.StreamLDA(K, 1./K, 1./K, 1., 0.7)
     for iteration in range(0, runs):
+        print '-----------------------------------'
+        print '         Iteration %d              ' % iteration
+        print '-----------------------------------'
+        
         # Download some articles
         (docset, articlenames) = \
             wikirandom.get_random_wikipedia_articles(batchsize)
         # Give them to online LDA
         (gamma, bound) = slda.update_lambda(docset)
         # Compute an estimate of held-out perplexity
-        (wordids, wordcts) = slda.parse_new_docs(docset)
+        wordids = slda.recentbatch['wordids']
+        wordcts = slda.recentbatch['wordcts']
+        #(wordids, wordcts) = slda.parse_new_docs(docset)
         perwordbound = bound * len(docset) / (slda._D * sum(map(sum, wordcts)))
         print '%d:  rho_t = %f,  held-out perplexity estimate = %f' % \
             (iteration, slda._rhot, numpy.exp(-perwordbound))
 
-        # Save lambda, the parameters to the variational distributions
-        # over topics, and gamma, the parameters to the variational
-        # distributions over topic weights for the articles analyzed in
-        # the last iteration.
-        if (iteration % 10 == 0):
-            numpy.savetxt('lambda-%d.dat' % iteration, slda._lambda.as_matrix())
-            numpy.savetxt('gamma-%d.dat' % iteration, gamma)
+        print_topics(slda._lambda, 10)
 
 if __name__ == '__main__':
     main()
