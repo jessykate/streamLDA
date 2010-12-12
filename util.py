@@ -10,9 +10,9 @@ def print_topics(lambda_, topn):
     
         print 'Topic %d' % k
         print '---------------------------'
-        for k,v in this_topic.items(): # this_topic.items() is pre-sorted
+        for word in this_topic.keys(): # this_topic.items() is pre-sorted
             if printlines > 0:
-                print '%20s  \t---\t  %.4f' % (k, v)
+                print '%20s  \t---\t  %.4f' % (word, this_topic.freq(word))
                 printlines -= 1
             else:
                 break
