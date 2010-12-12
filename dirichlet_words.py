@@ -199,16 +199,13 @@ class DirichletWords(object):
         self._topics[topic][word] = (self_scale*self._topics[topic][word] 
                                     + other_scale*otherlambda._topics[topic][word])
          
-      # update sequence counts
-      for ii in word:
-        self._alphabet[ii] = (self_scale*self._alphabet[ii] 
+    # update sequence counts
+    all_chars = self._alphabet.keys() + otherlambda._alphabet.keys()
+    distinct_chars = list(set(all_chars))
+ 
+    for ii in distinct_chars:
+      self._alphabet[ii] = (self_scale*self._alphabet[ii] 
                             + other_scale*otherlambda._alphabet[ii])
-
-    print 'after update'
-    print self._words.items()
-    print 'new total number of words: %d' % self._words.N()
-    
-    raw_input("enter to continue...")
 
   def word_prob(self, word):
     return (self._words[word] + self.alpha_word * self.seq_prob(word)) / \
