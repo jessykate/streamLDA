@@ -21,7 +21,8 @@
 import cPickle, string, numpy, getopt, sys, random, time, re, pprint
 
 import streamlda
-import wikirandom
+from wikirandom import WikipediaCorpus
+from twenty_news import TwentyNewsCorpus
 from util import print_topics
 
 def main():
@@ -34,6 +35,12 @@ def main():
     batchsize = 10 #64
     # The number of topics
     K = 10
+
+    if (len(sys.argv) < 3):
+      corpus = WikipediaCorpus()
+    else:
+      assert sys.argv[3] == "20", "Only non-wikipedia corpus supported is 20 newsgroups"
+      corpus = TwentyNewsCorpus("20_news", "data/20_news_date", )
 
     if (len(sys.argv) < 2):        
         runs = 50

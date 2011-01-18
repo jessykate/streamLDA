@@ -245,13 +245,14 @@ class StreamLDA:
             # the first tuple item contains the wordid, and the second contains
             # a numpy array with the statistics for each topic, for that word.
 
-            lambda_stats = n.outer(expElogthetad.T, cts/phinorm) * expElogbetad
-            lambda_data = zip(ids, lambda_stats.T)
-            for wordid, stats in lambda_data:
-                word = self._lambda.indexes[wordid]
-                for topic in xrange(self._K):
-                    stats_wk = stats[topic]
-                    new_lambda.update_count(word, topic, stats_wk)
+            if update_topics:
+              lambda_stats = n.outer(expElogthetad.T, cts/phinorm) * expElogbetad
+              lambda_data = zip(ids, lambda_stats.T)
+              for wordid, stats in lambda_data:
+                  word = self._lambda.indexes[wordid]
+                  for topic in xrange(self._K):
+                      stats_wk = stats[topic]
+                      new_lambda.update_count(word, topic, stats_wk)
 
         return((gamma, new_lambda))
 

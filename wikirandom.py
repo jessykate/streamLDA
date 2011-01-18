@@ -16,6 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import sys, urllib2, re, string, time, threading
+from corpora import Corpus
 
 def get_random_wikipedia_article():
     """
@@ -110,10 +111,20 @@ def get_random_wikipedia_articles(n):
             wtlist[j].join()
     return (WikiThread.articles, WikiThread.articlenames)
 
+class WikipediaCorpus(Corpus):
+  def __init__(self, name = "wiki"):
+    Corpus.__init__(self, name)
+
+  def docs(self, num_docs, train=True):
+    return get_random_wikipedia_articles(num_docs)
+
 if __name__ == '__main__':
+
+    c = WikipediaCorpus()
+
     t0 = time.time()
 
-    (articles, articlenames) = get_random_wikipedia_articles(1)
+    (articles, articlenames) = c.docs(1)
     for i in range(0, len(articles)):
         print articlenames[i]
 
