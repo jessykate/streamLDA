@@ -197,7 +197,8 @@ class StreamLDA:
         it = 0
         meanchange = 0
         for d in range(0, batchD):
-            print 'Updating gamma and phi for document %d in batch' % d
+            if d % 10 == 0:
+              print 'Updating gamma and phi for document %d in batch' % d
             # These are mostly just shorthand (but might help cache locality)
             ids = wordids[d]
             cts = wordcts[d]
@@ -245,14 +246,13 @@ class StreamLDA:
             # the first tuple item contains the wordid, and the second contains
             # a numpy array with the statistics for each topic, for that word.
 
-            if update_topics:
-              lambda_stats = n.outer(expElogthetad.T, cts/phinorm) * expElogbetad
-              lambda_data = zip(ids, lambda_stats.T)
-              for wordid, stats in lambda_data:
-                  word = self._lambda.indexes[wordid]
-                  for topic in xrange(self._K):
-                      stats_wk = stats[topic]
-                      new_lambda.update_count(word, topic, stats_wk)
+            lambda_stats = n.outer(expElogthetad.T, cts/phinorm) * expElogbetad
+            lambda_data = zip(ids, lambda_stats.T)
+            for wordid, stats in lambda_data:
+              word = self._lambda.indexes[wordid]
+              for topic in xrange(self._K):
+                stats_wk = stats[topic]
+                new_lambda.update_count(word, topic, stats_wk)
 
         return((gamma, new_lambda))
 
@@ -347,6 +347,33 @@ class StreamLDA:
         wordcts = self.recentbatch['wordcts']
         batchD = len(wordids)
 
+        score = self.batch_bound(gamma)
+
+        # Compensate for the subsampling of the population of documents
+        score = score * self._D / batchD
+
+        # The below assume a multinomial topic distribution, and should be
+        # updated for the CRP
+
+        # E[log p(beta | eta) - log q (beta | lambda)]
+        # score = score + n.sum((self._eta-self._lambda.as_matrix())*self._Elogbeta)
+        # score = score + n.sum(gammaln(self._lambda_mat) - gammaln(self._eta))
+        # score = score + n.sum(gammaln(self._eta*len(self._lambda)) - 
+        #                       gammaln(n.sum(self._lambda_mat, 1)))
+
+        return(score)
+
+
+    def batch_bound(self, gamma):
+        """
+        Computes the estimate of held out probability using only the recent
+        batch; doesn't try to estimate whole corpus.  If the recent batch isn't
+        used to update lambda, then this is the held-out probability.
+        """
+        wordids = self.recentbatch['wordids']
+        wordcts = self.recentbatch['wordcts']
+        batchD = len(wordids)
+
         score = 0
         Elogtheta = dirichlet_expectation(gamma)
         expElogtheta = n.exp(Elogtheta)
@@ -358,6 +385,7 @@ class StreamLDA:
             cts = n.array(wordcts[d])
             phinorm = n.zeros(len(ids))
             for i in range(0, len(ids)):
+                # print d, i, Elogtheta[d, :], self._Elogbeta[:, ids[i]]
                 temp = Elogtheta[d, :] + self._Elogbeta[:, ids[i]]
                 tmax = max(temp)
                 phinorm[i] = n.log(sum(n.exp(temp - tmax))) + tmax
@@ -368,14 +396,5 @@ class StreamLDA:
         score += n.sum(gammaln(gamma) - gammaln(self._alpha))
         score += sum(gammaln(self._alpha*self._K) - gammaln(n.sum(gamma, 1)))
 
-        # Compensate for the subsampling of the population of documents
-        score = score * self._D / batchD
-
-        # E[log p(beta | eta) - log q (beta | lambda)]
-        score = score + n.sum((self._eta-self._lambda.as_matrix())*self._Elogbeta)
-        score = score + n.sum(gammaln(self._lambda_mat) - gammaln(self._eta))
-        score = score + n.sum(gammaln(self._eta*len(self._lambda)) - 
-                              gammaln(n.sum(self._lambda_mat, 1)))
-
-        return(score)
+        return score
 

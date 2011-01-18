@@ -39,7 +39,7 @@ def main():
     if (len(sys.argv) < 3):
       corpus = WikipediaCorpus()
     else:
-      assert sys.argv[3] == "20", "Only non-wikipedia corpus supported is 20 newsgroups"
+      assert sys.argv[2] == "20", "Only non-wikipedia corpus supported is 20 newsgroups"
       corpus = TwentyNewsCorpus("20_news", "data/20_news_date", )
 
     if (len(sys.argv) < 2):        
@@ -49,25 +49,31 @@ def main():
 
     # Initialize the algorithm with alpha=1/K, eta=1/K, tau_0=1024, kappa=0.7
     slda = streamlda.StreamLDA(K, 1./K, 1./K, 1., 0.7)
-    for iteration in range(0, runs):
+
+    (test_set, test_names) = corpus.docs(batchsize * 5, False)
+
+    for iteration in xrange(0, runs):
         print '-----------------------------------'
         print '         Iteration %d              ' % iteration
         print '-----------------------------------'
         
         # Download some articles
         (docset, articlenames) = \
-            wikirandom.get_random_wikipedia_articles(batchsize)
+            corpus.docs(batchsize)
         # Give them to online LDA
         (gamma, bound) = slda.update_lambda(docset)
         # Compute an estimate of held-out perplexity
         wordids = slda.recentbatch['wordids']
         wordcts = slda.recentbatch['wordcts']
         #(wordids, wordcts) = slda.parse_new_docs(docset)
-        perwordbound = bound * len(docset) / (slda._D * sum(map(sum, wordcts)))
-        print '%d:  rho_t = %f,  held-out perplexity estimate = %f' % \
-            (iteration, slda._rhot, numpy.exp(-perwordbound))
 
-        print_topics(slda._lambda, 10)
+        if iteration % 10 == 0:
+          gamma_test, new_lambda = slda.do_e_step(test_set)
+          new_lambda = None
+          lhood = slda.batch_bound(gamma_test)
+
+          print_topics(slda._lambda, 10)
+          print "Held-out likelihood", lhood
 
 if __name__ == '__main__':
     main()
