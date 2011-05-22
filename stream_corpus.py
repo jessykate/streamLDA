@@ -27,8 +27,11 @@ from util import print_topics
 
 def main():
     """
-    Downloads and analyzes a bunch of random Wikipedia articles using
-    online VB for LDA.
+    Applies streamLDA to test data, currently either 20 newsgroups or
+    wikipedia. The wikipedia option downloads and analyzes a bunch of random
+    Wikipedia articles using online VB for LDA. This is nice for breadth of
+    examples, but is not precisely repeatable since the articles are random. 20
+    newsgroups provides data on which a repeatable run can be performed.
     """
 
     # The number of documents to analyze each iteration
@@ -36,16 +39,15 @@ def main():
     # The number of topics
     K = 10
 
-    if (len(sys.argv) < 3):
-      corpus = WikipediaCorpus()
+    assert len(sys.argv) == 3, "usage: ./stream_corpus corpus_name num_runs\ncorpus options: 20news, wikipedia"
+    if sys.argv[1] == 'wikipedia':
+        corpus = WikipediaCorpus()
+    elif sys.argv[1] == '20news':
+        corpus = TwentyNewsCorpus("20_news", "data/20_news_date", )
     else:
-      assert sys.argv[2] == "20", "Only non-wikipedia corpus supported is 20 newsgroups"
-      corpus = TwentyNewsCorpus("20_news", "data/20_news_date", )
-
-    if (len(sys.argv) < 2):        
-        runs = 50
-    else:
-        runs = int(sys.argv[1])        
+        print 'options not supported. please try again.'
+        sys.exit()
+    runs = int(sys.argv[2])        
 
     # Initialize the algorithm with alpha=1/K, eta=1/K, tau_0=1024, kappa=0.7
     slda = streamlda.StreamLDA(K, 1./K, 1./K, 1., 0.7)

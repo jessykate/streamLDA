@@ -46,7 +46,7 @@ class TwentyNewsCorpus(Corpus):
     return [open(x).read() for x in selection], selection
 
 if __name__ == "__main__":
-   c = TwentyNews("20news", "data/")
+   c = TwentyNewsCorpus("20news", "data/20_news_date")
 
    (articles, articlenames) = c.docs(20)
    for ii in range(0, len(articles)):
