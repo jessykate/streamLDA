@@ -24,6 +24,8 @@ from nltk import FreqDist
 import string, random
 import numpy as n
 
+from math import log
+
 CHAR_SMOOTHING = 1 / 10000.
 
 def probability_vector(dims):
