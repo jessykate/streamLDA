@@ -103,7 +103,8 @@ class DirichletWords(object):
     num_words = len(self.indexes)
     lambda_matrix = n.zeros((self.num_topics, num_words))
     for word_index, word in enumerate(self.indexes):
-        topic_weights = [self.topic_prob(k, word) for k in xrange(self.num_topics)]
+        topic_weights = [log(self.topic_prob(k, word)) \
+                         for k in xrange(self.num_topics)]
         # topic weights for this word-- a column vector. 
         lambda_matrix[:,word_index] = topic_weights
     return lambda_matrix
