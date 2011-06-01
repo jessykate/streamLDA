@@ -59,7 +59,7 @@ def main():
         print '         Iteration %d              ' % iteration
         print '-----------------------------------'
         
-        # Download some articles
+        # Get some new articles from the selected corpus
         (docset, articlenames) = \
             corpus.docs(batchsize)
         # Give them to online LDA
