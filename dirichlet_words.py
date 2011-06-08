@@ -120,8 +120,8 @@ class DirichletWords(object):
 
     num_tables = len(self._words)      
     number_to_forget = proportion * num_tables
-    if num_tables > max_tables:
-      number_to_forget += (num_tables - max_tables)
+    if num_tables > self.max_tables:
+      number_to_forget += (num_tables - self.max_tables)
     
     # change this to weight lower probability
     tables_to_forget = random.sample(xrange(num_tables), number_to_forget)
