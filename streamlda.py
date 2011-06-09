@@ -249,7 +249,7 @@ class StreamLDA:
             lambda_stats = n.outer(expElogthetad.T, cts/phinorm) * expElogbetad
             lambda_data = zip(ids, lambda_stats.T)
             for wordid, stats in lambda_data:
-              word = self._lambda.indexes[wordid]
+              word = self._lambda.dictionary(wordid)
               for topic in xrange(self._K):
                 stats_wk = stats[topic]
                 new_lambda.update_count(word, topic, stats_wk)

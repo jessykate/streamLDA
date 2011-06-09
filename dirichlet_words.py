@@ -36,17 +36,30 @@ def probability_vector(dims):
 
 class DirichletWords(object):
 
+  def initialize_index(self):
+    self.word_to_int = {}
+    self.int_to_word = {}
+
+
   def __init__(self, num_topics, alpha_topic = 1.0, alpha_word = 1.0, 
-                max_tables = 50000, sanity_check=False, initialize=False):
+               max_tables = 50000, sanity_check=False, initialize=False,
+               report_filename="topic_history.txt"):
 
     self.max_tables = max_tables
     self._alphabet = FreqDist()
-    # store all words seen in a list so they are associated with a unique ID. 
-    self.indexes = []
+    # store all words seen in a list so they are associated with a unique ID.
+
+    self.initialize_index()
+
     self._words = FreqDist()
 
     self.alpha_topic = alpha_topic
     self.alpha_word = alpha_word
+
+    self._num_updates = 0
+    self._report = None
+    if report_filename:
+        self._report = open(report_filename, 'w')
 
     self.num_topics = num_topics
     self._topics = [FreqDist() for x in xrange(num_topics)]
@@ -65,6 +78,7 @@ class DirichletWords(object):
     chars = "abcdefghijklmnopqrstuvwxyz"
     for i in xrange(3):
       word = random.choice(chars)
+      self.index(word)
       topic_weights = probability_vector(self.num_topics)
       for k in xrange(self.num_topics):
         self.update_count(word, k, topic_weights[k])
@@ -84,6 +98,7 @@ class DirichletWords(object):
     for i in xrange(self.num_topics):
         word_length = random.randint(9,20)
         word = r.read(word_length).translate(translate_table)
+        self.index(word)
         topic_weights = probability_vector(self.num_topics)
         for k in xrange(self.num_topics):
             self.update_count(word, k, topic_weights[k])
@@ -91,6 +106,9 @@ class DirichletWords(object):
 
   def __len__(self):
     return len(self._words)
+
+  def num_words(self):
+      return sum(1 for x in self._words if self._words[x] >= 1)
 
   def as_matrix(self):
     ''' Return a matrix of the probabilities of all words over all topics.
@@ -101,20 +119,30 @@ class DirichletWords(object):
     #  all the time!
 
     # create a numpy array here because that's what the e_step in streamLDA
-    # expects 
-    num_words = len(self.indexes)
+    # expects
+
+    num_words = self.num_words()
+    print("%i words" % num_words)
     lambda_matrix = n.zeros((self.num_topics, num_words))
-    for word_index, word in enumerate(self.indexes):
+
+    for word_index, word in enumerate(x for x in self._words \
+                                      if self._words[x] >= 1):
         topic_weights = [log(self.topic_prob(k, word)) \
                          for k in xrange(self.num_topics)]
+
         # topic weights for this word-- a column vector. 
         lambda_matrix[:,word_index] = topic_weights
+
+    self._num_updates += 1
+    if self._report:
+        self._report.write("%i %i %i %i\n" % (self._num_updates,
+                                              len(self._alphabet), \
+                                              len(self._words),
+                                              sum(x.B() for x in self._topics)))
+        
     return lambda_matrix
 
-  def index(self, word):
-    if word not in self.indexes:
-      self.indexes.append(word)
-    return self.indexes.index(word)
+
 
   def forget(self, proportion):
 
@@ -127,19 +155,24 @@ class DirichletWords(object):
     tables_to_forget = random.sample(xrange(num_tables), number_to_forget)
     words = self._words.keys()
 
+    self.initialize_index()
+
     word_id = -1
     for ii in words:
       word_id += 1
 
       if not word_id in tables_to_forget:
+        self.index(ii)
         continue
 
       count = self._words[ii]
       for jj in self._topics:
+        self._topics[jj][ii] = 0
         del self._topics[jj][ii]
 
       for jj in ii:
         self._chars[jj] -= count
+      self._words[ii] = 0
       del self._words[ii]
 
   def seq_prob(self, word):
@@ -167,24 +200,32 @@ class DirichletWords(object):
     # (current) lambda with the number in the new. here we essentially take
     # the same steps as update_count but do so explicitly so we can weight the
     # terms appropriately. 
-    total_words = self._words.N() + otherlambda._words.N()
+    total_words = float(self._words.N() + otherlambda._words.N())
 
     self_scale = (1.0-rhot)*total_words/float(self._words.N())
     other_scale = rhot*total_words/float(otherlambda._words.N())
 
     for word in distinct_words:
-
-      if word not in self.indexes:
-        self.indexes.append(word)
+      self.index(word)
         
       # update word counts
-      self._words[word] = (self_scale*self._words[word] 
-                        + other_scale*otherlambda._words[word])
+      new_val = (self_scale*self._words[word] 
+                 + other_scale*otherlambda._words[word])
+      if new_val >= 1.0:
+          self._words[word] = new_val
+      else:
+          self._words[word] = 0
+          del self._words[word]
       
       # update topic counts
       for topic in xrange(self.num_topics):
-        self._topics[topic][word] = (self_scale*self._topics[topic][word] 
-                                    + other_scale*otherlambda._topics[topic][word])
+        new_val = (self_scale*self._topics[topic][word] 
+                   + other_scale*otherlambda._topics[topic][word])
+        if new_val >= 1.0:
+            self._topics[topic][word] = new_val
+        else:
+            self._topics[topic][word] = 0
+            del self._topics[topic][word]
          
     # update sequence counts
     all_chars = self._alphabet.keys() + otherlambda._alphabet.keys()
@@ -205,8 +246,8 @@ class DirichletWords(object):
 
   def update_count(self, word, topic, count):
     # create an index for the word
-    if word not in self.indexes:
-      self.indexes.append(word)
+    self.index(word)
+      
     # increment the frequency of the word in the specified topic
     self._topics[topic][word] += count
     # also keep a separate frequency count of the number of times this word has
@@ -218,6 +259,20 @@ class DirichletWords(object):
     # be counted here. 
     for ii in word:
       self._alphabet[ii] += count
+
+  def index(self, word):
+      assert not isinstance(word, int)
+
+      if not word in self.word_to_int:
+          self.word_to_int[word] = len(self.word_to_int)
+          self.int_to_word[self.word_to_int[word]] = word
+
+      return self.word_to_int[word]
+
+  def dictionary(self, word_id):
+      assert isinstance(word_id, int)
+
+      return self.int_to_word[word_id]
 
   def print_probs(self, word):
     print "----------------"
