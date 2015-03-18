@@ -1,3 +1,8 @@
+## Update
+
+**I am no longer maintaining this repo. A more up to date version is available at https://github.com/kzhai/InfVocLDA** 
+
+----------- 
 STREAM VARIATIONAL BAYES FOR LATENT DIRICHLET ALLOCATION
 
 Stream LDA implements a version of the LDA algorithm such that a continuous
